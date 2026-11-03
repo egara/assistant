@@ -15,29 +15,29 @@ for arg in "$@"; do
     esac
 done
 
-CONFIG_FILE="$HOME/.config/mofakir/config.json"
-TEMP_DIR="/tmp/mofakir"
+CONFIG_FILE="$HOME/.config/assistant/config.json"
+TEMP_DIR="/tmp/assistant"
 PID_FILE="$TEMP_DIR/initial_recording.pid"
-SOUND_DIR="$HOME/.local/share/mofakir/sounds"
+SOUND_DIR="$HOME/.local/share/assistant/sounds"
 mkdir -p "$TEMP_DIR" "$SOUND_DIR"
 
-if [ ! -f "$CONFIG_FILE" ]; then mofakir-gui ""; exit 1; fi
+if [ ! -f "$CONFIG_FILE" ]; then assistant-gui ""; exit 1; fi
 
 WHISPER_MODEL=$(jq -r '.voice.whisper_model' "$CONFIG_FILE")
 
 if [[ "$WHISPER_MODEL" == "null" || -z "$WHISPER_MODEL" ]]; then
-    WHISPER_MODEL="$HOME/.local/share/mofakir/models/ggml-small.bin"
+    WHISPER_MODEL="$HOME/.local/share/assistant/models/ggml-small.bin"
 else
     WHISPER_MODEL="${WHISPER_MODEL/#\~/$HOME}"
 fi
 
 if [ ! -f "$WHISPER_MODEL" ]; then
-    notify-send -u normal "Mofakir AI" "Downloading Whisper model (ggml-small.bin) for the first time..."
+    notify-send -u normal "Assistant AI" "Downloading Whisper model (ggml-small.bin) for the first time..."
     mkdir -p "$(dirname "$WHISPER_MODEL")"
     wget -q --show-progress -O "$WHISPER_MODEL" "https://huggingface.co/ggerganov/whisper.cpp/resolve/main/ggml-small.bin"
 fi
 
-if pgrep -f "mofakir-gui" > /dev/null; then
+if pgrep -f "assistant-gui" > /dev/null; then
     echo "toggle" > "$TEMP_DIR/gui_signal"
     exit 0
 fi
@@ -52,7 +52,7 @@ if [[ "$TOGGLE_FLAG" == "--toggle" && -f "$PID_FILE" ]]; then
 fi
 
 if pgrep -x "rec" > /dev/null; then
-    notify-send -u critical "🎙️ Mic Busy!" "Mofakir is already recording."
+    notify-send -u critical "🎙️ Mic Busy!" "Assistant is already recording."
     exit 1
 fi
 
@@ -88,7 +88,7 @@ if [[ "$MODE_VOICE" == true ]]; then
     pw-play "$SOUND_DIR/start.wav" 2>/dev/null &
     
     if [[ "$TOGGLE_FLAG" == "--toggle" ]]; then
-        notify-send -t 3000 "🎙️ Mofakir" "Listening... Press shortcut again to stop."
+        notify-send -t 3000 "🎙️ Assistant" "Listening... Press shortcut again to stop."
         rec -q -r 16000 -c 1 -b 16 -e signed-integer "$TEMP_DIR/voice.wav" &
         echo $! > "$PID_FILE"
         wait $! 
@@ -103,4 +103,4 @@ fi
 
 # Launch PyQt6 GUI with combined context and voice modes
 FINAL_PROMPT="$WIN_CONTEXT$CLIP_CONTEXT$USER_PROMPT"
-mofakir-gui "$FINAL_PROMPT" "$LAUNCH_FLAG" &
+assistant-gui "$FINAL_PROMPT" "$LAUNCH_FLAG" &

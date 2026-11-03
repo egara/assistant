@@ -26,11 +26,11 @@ urllib3.disable_warnings(urllib3.exceptions.InsecureRequestWarning)
 # ==========================================
 # ⚙️ CONFIGURATION & PATH RESOLUTION
 # ==========================================
-CONFIG_DIR = os.path.expanduser("~/.config/mofakir")
+CONFIG_DIR = os.path.expanduser("~/.config/assistant")
 CONFIG_FILE = os.path.join(CONFIG_DIR, "config.json")
-TEMP_DIR = "/tmp/mofakir"
-SOUND_DIR = os.path.expanduser("~/.local/share/mofakir/sounds")
-HISTORY_DIR = os.path.expanduser("~/.local/state/mofakir")
+TEMP_DIR = "/tmp/assistant"
+SOUND_DIR = os.path.expanduser("~/.local/share/assistant/sounds")
+HISTORY_DIR = os.path.expanduser("~/.local/state/assistant")
 HISTORY_FILE = os.path.join(HISTORY_DIR, "chat_history.json")
 
 os.makedirs(CONFIG_DIR, exist_ok=True)
@@ -42,8 +42,8 @@ _base_dir = os.path.dirname(os.path.abspath(__file__))
 qml_paths_to_check = [
     os.path.join(CONFIG_DIR, "ui.qml"),
     os.path.join(_base_dir, "ui.qml"),
-    os.path.abspath(os.path.join(_base_dir, "..", "share", "mofakir", "ui.qml")),
-    os.path.expanduser("~/.local/share/mofakir/ui.qml"),
+    os.path.abspath(os.path.join(_base_dir, "..", "share", "assistant", "ui.qml")),
+    os.path.expanduser("~/.local/share/assistant/ui.qml"),
 ]
 
 QML_FILE = None
@@ -82,7 +82,7 @@ VOICE_CONF = config.get("voice", {})
 client = OpenAI(base_url=LLM_BASE_URL, api_key=LLM_API_KEY)
 
 CONTEXT_PATH = os.path.expanduser(
-    config.get("llm", {}).get("system_context", "~/.config/mofakir/context.md")
+    config.get("llm", {}).get("system_context", "~/.config/assistant/context.md")
 )
 USER_CONTEXT = ""
 if os.path.exists(CONTEXT_PATH):
@@ -915,7 +915,7 @@ class Backend(QObject):
         self.statusChanged.emit("⚙️ Transcribing...", "#f9e2af")
         whisper_model = os.path.expanduser(
             VOICE_CONF.get("whisper_model")
-            or "~/.local/share/mofakir/models/ggml-small.bin"
+            or "~/.local/share/assistant/models/ggml-small.bin"
         )
         res = subprocess.run(
             [

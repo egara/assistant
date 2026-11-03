@@ -1,5 +1,5 @@
 {
-  description = "Mofakir - A lightweight, agentic AI Desktop Assistant";
+  description = "Assistant - A lightweight, agentic AI Desktop Assistant";
 
   inputs = {
     nixpkgs.url = "github:NixOS/nixpkgs/nixos-unstable";
@@ -38,12 +38,12 @@
           };
 
           # Wrap the derivation in a function so it can be overridden by the user!
-          mofakir-derivation =
+          assistant-derivation =
             {
               voices ? [ "en_US-lessac-medium" ],
             }:
             pkgs.stdenv.mkDerivation rec {
-              pname = "mofakir";
+              pname = "assistant";
               version = "1.0.0";
 
               src = ./.;
@@ -74,45 +74,45 @@
                   };
                 in
                 ''
-                  cp ${onnxFile} $out/share/mofakir/models/${voiceName}.onnx
-                  cp ${jsonFile} $out/share/mofakir/models/${voiceName}.onnx.json
+                  cp ${onnxFile} $out/share/assistant/models/${voiceName}.onnx
+                  cp ${jsonFile} $out/share/assistant/models/${voiceName}.onnx.json
                 ''
               ) voices;
 
               installPhase = ''
-                mkdir -p $out/bin $out/libexec $out/share/mofakir/sounds $out/share/mofakir/models
+                mkdir -p $out/bin $out/libexec $out/share/assistant/sounds $out/share/assistant/models
 
                 if [ -d "sounds" ] && [ "$(ls -A sounds 2>/dev/null)" ]; then
-                  cp sounds/* $out/share/mofakir/sounds/
+                  cp sounds/* $out/share/assistant/sounds/
                 else
-                  sox -n $out/share/mofakir/sounds/start.wav synth 0.1 sine 800 vol 0.5
-                  sox -n $out/share/mofakir/sounds/stop.wav synth 0.15 sine 400 vol 0.5
+                  sox -n $out/share/assistant/sounds/start.wav synth 0.1 sine 800 vol 0.5
+                  sox -n $out/share/assistant/sounds/stop.wav synth 0.15 sine 400 vol 0.5
                 fi
 
-                cp src/ui.qml $out/share/mofakir/ui.qml
+                cp src/ui.qml $out/share/assistant/ui.qml
 
-                cp ${whisperSmall} $out/share/mofakir/models/ggml-small.bin
+                cp ${whisperSmall} $out/share/assistant/models/ggml-small.bin
 
                 ${fetchedVoices}
 
-                cp trigger.sh $out/libexec/mofakir-unwrapped
-                chmod +x $out/libexec/mofakir-unwrapped
+                cp trigger.sh $out/libexec/assistant-unwrapped
+                chmod +x $out/libexec/assistant-unwrapped
 
-                cp src/mofakir-gui.py $out/bin/mofakir-gui
-                chmod +x $out/bin/mofakir-gui
+                cp src/assistant-gui.py $out/bin/assistant-gui
+                chmod +x $out/bin/assistant-gui
 
-                cat << 'EOF' > $out/bin/mofakir
+                cat << 'EOF' > $out/bin/assistant
                 #!/usr/bin/env bash
-                mkdir -p "$HOME/.local/share/mofakir/sounds" "$HOME/.local/share/mofakir/models"
+                mkdir -p "$HOME/.local/share/assistant/sounds" "$HOME/.local/share/assistant/models"
 
-                ln -sf @out@/share/mofakir/sounds/* "$HOME/.local/share/mofakir/sounds/"
-                ln -sf @out@/share/mofakir/models/* "$HOME/.local/share/mofakir/models/"
+                ln -sf @out@/share/assistant/sounds/* "$HOME/.local/share/assistant/sounds/"
+                ln -sf @out@/share/assistant/models/* "$HOME/.local/share/assistant/models/"
 
                 export PATH="@path@:$PATH"
-                exec @out@/libexec/mofakir-unwrapped "$@"
+                exec @out@/libexec/assistant-unwrapped "$@"
                 EOF
 
-                substituteInPlace $out/bin/mofakir \
+                substituteInPlace $out/bin/assistant \
                   --replace "@out@" "$out" \
                   --replace "@path@" "${
                     pkgs.lib.makeBinPath [
@@ -132,9 +132,9 @@
                     ]
                   }:$out/bin"
                   
-                chmod +x $out/bin/mofakir
+                chmod +x $out/bin/assistant
                   
-                wrapProgram $out/bin/mofakir-gui \
+                wrapProgram $out/bin/assistant-gui \
                   --set-default QT_QUICK_BACKEND software \
                   --prefix PATH : ${
                     pkgs.lib.makeBinPath [
@@ -150,14 +150,14 @@
             };
         in
         {
-          default = pkgs.callPackage mofakir-derivation { };
+          default = pkgs.callPackage assistant-derivation { };
         }
       );
 
       apps = forAllSystems (pkgs: {
         default = {
           type = "app";
-          program = "${self.packages.${pkgs.system}.default}/bin/mofakir";
+          program = "${self.packages.${pkgs.system}.default}/bin/assistant";
         };
       });
 
@@ -169,7 +169,7 @@
           ...
         }:
         let
-          cfg = config.programs.mofakir;
+          cfg = config.programs.assistant;
 
           shortToFull = {
             "en" = "en_US-lessac-medium";
@@ -185,12 +185,12 @@
           };
         in
         {
-          options.programs.mofakir = {
-            enable = lib.mkEnableOption "Mofakir AI Desktop Assistant";
+          options.programs.assistant = {
+            enable = lib.mkEnableOption "Assistant AI Desktop Assistant";
             package = lib.mkOption {
               type = lib.types.package;
               default = self.packages.${pkgs.stdenv.hostPlatform.system}.default;
-              description = "The Mofakir package to install.";
+              description = "The Assistant package to install.";
             };
             settings = lib.mkOption {
               type = lib.types.attrs;
@@ -215,7 +215,7 @@
               generatedLocalModels = builtins.listToAttrs (
                 map (v: {
                   name = v;
-                  value = "~/.local/share/mofakir/models/${shortToFull.${v} or shortToFull."en"}.onnx";
+                  value = "~/.local/share/assistant/models/${shortToFull.${v} or shortToFull."en"}.onnx";
                 }) requestedVoices
               );
 
@@ -230,10 +230,10 @@
                 (cfg.package.override { voices = mappedVoices; })
               ];
 
-              xdg.configFile."mofakir/config.json" = lib.mkIf (finalSettings != { }) {
+              xdg.configFile."assistant/config.json" = lib.mkIf (finalSettings != { }) {
                 text = builtins.toJSON finalSettings;
               };
-              xdg.configFile."mofakir/context.md" = lib.mkIf (cfg.context != "") { text = cfg.context; };
+              xdg.configFile."assistant/context.md" = lib.mkIf (cfg.context != "") { text = cfg.context; };
             }
           );
         };

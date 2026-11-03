@@ -7,7 +7,7 @@ ApplicationWindow {
     visible: true
     width: 650
     height: 800
-    title: "Mofakir AI"
+    title: "Assistant AI"
     color: "#0b0f19"
 
     property int activeAiIndex: -1
