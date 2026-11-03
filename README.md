@@ -1,6 +1,9 @@
-# 🤖 Mofakir AI Desktop Assistant
+# 🤖 Assistant - AI Desktop Assistant
 
-Mofakir is a native, agentic AI desktop assistant built specifically for Linux environments. Instead of living inside a restricted web browser sandbox, Mofakir runs as a lightweight native PyQt6 GUI that bridges your offline (or online) LLM directly to your window manager, clipboard, active application context, and file system.
+> [!NOTE]
+> **Fork & Attribution**: This project is a fork of [Mofakir](https://github.com/bonnjalal/Mofakir), created by [Abdelilah Jalal (@bonnjalal)](https://github.com/bonnjalal). Huge thanks to Abdelilah for his outstanding work building the original native Linux agentic desktop assistant!
+
+Assistant is a native, agentic AI desktop assistant built specifically for Linux environments. Instead of living inside a restricted web browser sandbox, Assistant runs as a lightweight native PyQt6 GUI that bridges your offline (or online) LLM directly to your window manager, clipboard, active application context, and file system.
 
 It can see your screen, read your copied text or binary clipboard assets, organize your Obsidian vaults, run local bash commands with interactive UI safety prompts, and hold spoken conversations with automatic multilingual speech-to-text and text-to-speech.
 
@@ -40,7 +43,7 @@ If you use NixOS with Flakes enabled, Mofakir is entirely packaged with all syst
 
 #### Run Directly
 ```bash
-nix run github:bonnjalal/Mofakir
+nix run github:egara/assistant
 ```
 
 #### Home Manager Integration
@@ -48,11 +51,11 @@ Add the Home Manager module to your configuration to declare your settings, cont
 
 Add The flake to your configuration:
 ```nix
-mofakir.url = "github:bonnjalal/Mofakir";
+assistant.url = "github:egara/assistant";
 ```
 ```nix
 { inputs, pkgs, ... }: {
-  imports = [ inputs.mofakir.homeManagerModules.default ];
+  imports = [ inputs.assistant.homeManagerModules.default ];
 
   programs.mofakir = {
     enable = true;
@@ -61,13 +64,13 @@ mofakir.url = "github:bonnjalal/Mofakir";
     '';
     settings = {
       llm = {
-        model = "Gemma-4-e2b";
-        base_url = "[http://127.0.0.1:8080/v1](http://127.0.0.1:8080/v1)";
+        model = "gemma4-it:12b";
+        base_url = "http://127.0.0.1:52625/v1";
         api_key = "sk-none";
       };
       voice = {
         tts_engine = "local"; 
-        tts_offline_voices = [ "en" "ar" ]; 
+        tts_offline_voices = [ "en" "es" ]; 
       };
     };
   };
@@ -80,8 +83,8 @@ You can find the full options in the config bellow.
 
 
 ```bash
-git clone [https://github.com/bonnjalal/Mofakir.git](https://github.com/bonnjalal/Mofakir.git)
-cd mofakir
+git clone https://github.com/egara/assistant.git
+cd assistant
 chmod +x install.sh
 ./install.sh
 ```
