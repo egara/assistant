@@ -184,6 +184,29 @@ Controls the speech-to-text (STT) and text-to-speech (TTS) pipelines.
 
 ---
 
+### 4. The `"mcp_servers"` Block
+
+Enables dynamic integration with external **Model Context Protocol (MCP)** servers over HTTP (SSE or Streamable HTTP). All tools exposed by configured MCP servers are automatically discovered and registered with the local LLM.
+
+```json
+"mcp_servers": {
+    "time": {
+        "url": "http://127.0.0.1:32770/sse",
+        "transport": "sse"
+    },
+    "searxng": {
+        "url": "http://127.0.0.1:32771/mcp",
+        "transport": "streamable_http"
+    }
+}
+```
+
+* **`url`** *(String)*: The HTTP/SSE endpoint of the running MCP server.
+* **`transport`** *(String)*: The transport protocol (`"sse"` or `"streamable_http"`).
+* **SearXNG Priority & Fallback**: When an MCP server providing `searxng_web_search` is registered, web queries use SearXNG by default. If the SearXNG server is unreachable or fails, Assistant automatically falls back to DuckDuckGo scraping.
+
+---
+
 ### Common Configuration Profiles
 
 #### Profile A: Local Model with Speech-to-Text only (TTS Disabled)
@@ -230,12 +253,13 @@ Use this profile if you want total privacy with local speech synthesis.
 
 Unlike basic chat interfaces, Assistant parses your prompt and dynamically decides whether it needs to invoke a native tool.
 
-### Built-in Desktop Tools
+### Built-in & MCP Tools
 1. `get_weather(location)`: Fetches real-time terminal-friendly formatting from `wttr.in`.
-2. `web_search(query)`: Executes DuckDuckGo scraping to parse fresh documentation and feed live results to the LLM context.
+2. `web_search(query)`: Searches the web prioritizing local SearXNG (via MCP) with automatic DuckDuckGo fallback.
 3. `obsidian_search` / `obsidian_read` / `obsidian_write`: Manages notes using the encrypted Obsidian Local REST API.
 4. `manage_desktop(action, target)`: Switches workspaces or dispatches active window addresses cleanly on Hyprland.
 5. `execute_command(command)`: Runs local bash pipelines.
+6. **Dynamic MCP Tools**: Any additional tools exposed by configured MCP servers (e.g. `current_time`, `convert_time`, `searxng_web_search`, etc.).
 
 ### Execution Safety Guardrails & Threading Isolation
 Assistant classifies all system bash commands before executing them:

@@ -21,6 +21,16 @@ import urllib3
 from bs4 import BeautifulSoup
 from langdetect import detect
 
+try:
+    from mcp.client.sse import sse_client
+    from mcp.client.streamable_http import streamable_http_client
+    from mcp import ClientSession
+    import asyncio
+    import concurrent.futures
+    MCP_AVAILABLE = True
+except ImportError:
+    MCP_AVAILABLE = False
+
 urllib3.disable_warnings(urllib3.exceptions.InsecureRequestWarning)
 
 # ==========================================
@@ -79,6 +89,7 @@ LLM_MODEL = config.get("llm", {}).get("model", "Hermes-3-8B")
 VISION_ENABLED = config.get("llm", {}).get("vision_enabled", True)
 
 VOICE_CONF = config.get("voice", {})
+MCP_SERVERS_CONF = config.get("mcp_servers", {})
 client = OpenAI(base_url=LLM_BASE_URL, api_key=LLM_API_KEY)
 
 CONTEXT_PATH = os.path.expanduser(
@@ -97,6 +108,98 @@ else:
             )
     except:
         pass
+
+# ==========================================
+# 🔌 MCP (MODEL CONTEXT PROTOCOL) MANAGER
+# ==========================================
+def _run_sync(coro, timeout=15):
+    with concurrent.futures.ThreadPoolExecutor(max_workers=1) as pool:
+        future = pool.submit(asyncio.run, coro)
+        return future.result(timeout=timeout)
+
+
+class MCPManager:
+    def __init__(self, servers_config):
+        self.config = servers_config or {}
+        self.tools = {}
+
+    def discover_tools(self):
+        if not MCP_AVAILABLE or not self.config:
+            return []
+        discovered = []
+        for server_name, server_cfg in self.config.items():
+            url = server_cfg.get("url")
+            transport = server_cfg.get("transport", "sse").lower()
+            if not url:
+                continue
+            try:
+                tools_list = _run_sync(self._fetch_tools(url, transport), timeout=6)
+                for t in tools_list:
+                    name = t["function"]["name"]
+                    self.tools[name] = {
+                        "server": server_name,
+                        "url": url,
+                        "transport": transport,
+                        "original_name": name,
+                    }
+                    discovered.append(t)
+            except Exception as e:
+                print(f"[MCP] Warning: Failed to connect to server '{server_name}' at {url}: {e}")
+        return discovered
+
+    async def _fetch_tools(self, url, transport):
+        client_cm = sse_client(url) if transport == "sse" else streamable_http_client(url)
+        async with client_cm as streams:
+            read, write = streams[0], streams[1]
+            async with ClientSession(read, write) as session:
+                await session.initialize()
+                tool_list = await session.list_tools()
+                out = []
+                for t in tool_list.tools:
+                    schema = (
+                        t.input_schema
+                        if hasattr(t, "input_schema")
+                        else {"type": "object", "properties": {}}
+                    )
+                    out.append(
+                        {
+                            "type": "function",
+                            "function": {
+                                "name": t.name,
+                                "description": t.description or "",
+                                "parameters": schema,
+                            },
+                        }
+                    )
+                return out
+
+    def call_tool(self, tool_name, tool_args):
+        if tool_name not in self.tools:
+            return f"Error: Tool '{tool_name}' not found in MCP registry."
+        info = self.tools[tool_name]
+        return _run_sync(
+            self._call_tool_async(info["url"], info["transport"], info["original_name"], tool_args),
+            timeout=30,
+        )
+
+    async def _call_tool_async(self, url, transport, tool_name, tool_args):
+        client_cm = sse_client(url) if transport == "sse" else streamable_http_client(url)
+        async with client_cm as streams:
+            read, write = streams[0], streams[1]
+            async with ClientSession(read, write) as session:
+                await session.initialize()
+                res = await session.call_tool(tool_name, tool_args)
+                texts = []
+                for c in res.content:
+                    if hasattr(c, "text"):
+                        texts.append(c.text)
+                    else:
+                        texts.append(str(c))
+                return "\n".join(texts)
+
+
+mcp_manager = MCPManager(MCP_SERVERS_CONF)
+mcp_tools = mcp_manager.discover_tools()
 
 ## TOOLS & LOGIC
 tools = [
@@ -197,7 +300,7 @@ tools = [
             },
         },
     },
-]
+] + mcp_tools
 
 
 def get_weather(location):
@@ -299,6 +402,7 @@ def execute_command(command):
 
 
 def deep_web_search(query):
+    # Fallback to DuckDuckGo search if MCP SearXNG is unavailable or failed
     try:
         with DDGS() as ddgs:
             results = list(ddgs.text(query, max_results=3, backend="lite"))
@@ -316,6 +420,21 @@ def deep_web_search(query):
         return out[:5000]
     except Exception as e:
         return f"Error: {e}"
+
+
+def perform_web_search(query):
+    # Priority 1: MCP SearXNG tool if registered
+    if "searxng_web_search" in mcp_manager.tools:
+        try:
+            mcp_res = mcp_manager.call_tool("searxng_web_search", {"query": query})
+            if mcp_res and not mcp_res.startswith("Error:"):
+                return mcp_res
+            print(f"[Search] SearXNG MCP error, falling back to DuckDuckGo: {mcp_res}")
+        except Exception as e:
+            print(f"[Search] SearXNG MCP exception, falling back to DuckDuckGo: {e}")
+
+    # Priority 2: Fallback to DuckDuckGo
+    return deep_web_search(query)
 
 
 def manage_desktop(action, target, window_address=""):
@@ -628,7 +747,7 @@ class AIGeneratorThread(QThread):
                     if tool_name == "get_weather":
                         results = get_weather(args.get("location", ""))
                     elif tool_name == "web_search":
-                        results = deep_web_search(args.get("query", ""))
+                        results = perform_web_search(args.get("query", ""))
                     elif tool_name == "obsidian_search":
                         results = search_obsidian(args.get("query", ""))
                     elif tool_name == "obsidian_read":
@@ -645,6 +764,8 @@ class AIGeneratorThread(QThread):
                         )
                     elif tool_name == "execute_command":
                         results = self.execute_command_safe(args.get("command", ""))
+                    elif tool_name in mcp_manager.tools:
+                        results = mcp_manager.call_tool(tool_name, args)
                     else:
                         results = "Done."
 

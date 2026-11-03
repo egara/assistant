@@ -28,6 +28,7 @@
               langdetect
               edge-tts
               pyqt6
+              mcp
             ]
           );
 
