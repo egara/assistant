@@ -256,10 +256,13 @@ Unlike basic chat interfaces, Assistant parses your prompt and dynamically decid
 ### Built-in & MCP Tools
 1. `get_weather(location)`: Fetches real-time terminal-friendly formatting from `wttr.in`.
 2. `web_search(query)`: Searches the web prioritizing local SearXNG (via MCP) with automatic DuckDuckGo fallback.
-3. `obsidian_search` / `obsidian_read` / `obsidian_write`: Manages notes using the encrypted Obsidian Local REST API.
-4. `manage_desktop(action, target)`: Switches workspaces or dispatches active window addresses cleanly on Hyprland.
-5. `execute_command(command)`: Runs local bash pipelines.
-6. **Dynamic MCP Tools**: Any additional tools exposed by configured MCP servers (e.g. `current_time`, `convert_time`, `searxng_web_search`, etc.).
+3. `read_file(path)`: Directly reads the contents of any file on the local filesystem.
+4. `write_file(path, content)`: Creates or updates local files with specified content and creates directories if necessary.
+5. `replace_in_file(path, target, replacement)`: Finds and replaces text within an existing file.
+6. `obsidian_search` / `obsidian_read` / `obsidian_write`: Manages notes using the encrypted Obsidian Local REST API.
+7. `manage_desktop(action, target, window_address)`: Switches workspaces or moves windows seamlessly on Hyprland.
+8. `execute_command(command)`: Runs local bash pipelines (with detached background execution for GUI apps).
+9. **Dynamic MCP Tools**: Any additional tools exposed by configured MCP servers (e.g. `current_time`, `convert_time`, `searxng_web_search`, etc.).
 
 ### Execution Safety Guardrails & Threading Isolation
 Assistant classifies all system bash commands before executing them:

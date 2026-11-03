@@ -269,6 +269,69 @@ tools = [
     {
         "type": "function",
         "function": {
+            "name": "read_file",
+            "description": "Read the text contents of a file at the given absolute or relative path.",
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "path": {
+                        "type": "string",
+                        "description": "File path to read (e.g. '~/prueba/ana.txt' or '/home/user/document.txt').",
+                    }
+                },
+                "required": ["path"],
+            },
+        },
+    },
+    {
+        "type": "function",
+        "function": {
+            "name": "write_file",
+            "description": "Create or overwrite a file at the given path with new text content. Creates parent directories if needed.",
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "path": {
+                        "type": "string",
+                        "description": "Target file path (e.g. '~/prueba/resumen.txt').",
+                    },
+                    "content": {
+                        "type": "string",
+                        "description": "The exact full text content to write into the file.",
+                    },
+                },
+                "required": ["path", "content"],
+            },
+        },
+    },
+    {
+        "type": "function",
+        "function": {
+            "name": "replace_in_file",
+            "description": "Replace occurrences of a target string or pattern in a file with replacement text.",
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "path": {
+                        "type": "string",
+                        "description": "Target file path to modify (e.g. '~/prueba/ana.txt').",
+                    },
+                    "target": {
+                        "type": "string",
+                        "description": "The exact string or word to be replaced.",
+                    },
+                    "replacement": {
+                        "type": "string",
+                        "description": "The new replacement string.",
+                    },
+                },
+                "required": ["path", "target", "replacement"],
+            },
+        },
+    },
+    {
+        "type": "function",
+        "function": {
             "name": "execute_command",
             "description": "Execute a bash shell command. For GUI applications, open commands, or long-running processes, append '&' or invoke the command normally (they will run detached in background).",
             "parameters": {
@@ -393,6 +456,51 @@ def write_obsidian(filename, content):
         )
     except Exception as e:
         return f"Error: {e}"
+
+
+def read_file(path):
+    try:
+        resolved = os.path.expanduser(path.strip())
+        if not os.path.exists(resolved):
+            return f"Error: File '{resolved}' does not exist."
+        if not os.path.isfile(resolved):
+            return f"Error: '{resolved}' is not a regular file."
+        with open(resolved, "r", encoding="utf-8", errors="replace") as f:
+            content = f.read(50000)
+        return f"--- File: {resolved} ---\n{content}"
+    except Exception as e:
+        return f"Error reading file '{path}': {e}"
+
+
+def write_file(path, content):
+    try:
+        resolved = os.path.expanduser(path.strip())
+        parent_dir = os.path.dirname(resolved)
+        if parent_dir:
+            os.makedirs(parent_dir, exist_ok=True)
+        with open(resolved, "w", encoding="utf-8") as f:
+            f.write(content)
+        return f"Success: File '{resolved}' written successfully ({len(content)} characters)."
+    except Exception as e:
+        return f"Error writing file '{path}': {e}"
+
+
+def replace_in_file(path, target, replacement):
+    try:
+        resolved = os.path.expanduser(path.strip())
+        if not os.path.exists(resolved):
+            return f"Error: File '{resolved}' does not exist."
+        with open(resolved, "r", encoding="utf-8", errors="replace") as f:
+            text = f.read()
+        if target not in text:
+            return f"Warning: Target text '{target}' was not found in '{resolved}'."
+        count = text.count(target)
+        new_text = text.replace(target, replacement)
+        with open(resolved, "w", encoding="utf-8") as f:
+            f.write(new_text)
+        return f"Success: Replaced {count} occurrence(s) of '{target}' in '{resolved}'."
+    except Exception as e:
+        return f"Error replacing text in '{path}': {e}"
 
 
 def execute_command(command):
@@ -822,6 +930,16 @@ class AIGeneratorThread(QThread):
                         results = get_weather(args.get("location", ""))
                     elif tool_name == "web_search":
                         results = perform_web_search(args.get("query", ""))
+                    elif tool_name == "read_file":
+                        results = read_file(args.get("path", ""))
+                    elif tool_name == "write_file":
+                        results = write_file(args.get("path", ""), args.get("content", ""))
+                    elif tool_name == "replace_in_file":
+                        results = replace_in_file(
+                            args.get("path", ""),
+                            args.get("target", ""),
+                            args.get("replacement", ""),
+                        )
                     elif tool_name == "obsidian_search":
                         results = search_obsidian(args.get("query", ""))
                     elif tool_name == "obsidian_read":
@@ -968,7 +1086,15 @@ class Backend(QObject):
             self.submit_query(sys.argv[1])
 
     def load_history(self):
-        system_content = "You are Assistant, an agentic AI assistant. You MUST use the provided JSON tool calls to execute commands and actions. When opening GUI applications or web browsers, use execute_command with the appropriate application command in background. Keep answers conversational."
+        system_content = (
+            "You are Assistant, an agentic AI desktop assistant with direct system access. "
+            "You MUST use the provided JSON tool calls to interact with the system, files, and applications.\n"
+            "- CRITICAL RULE FOR FILES: When the user asks to create, write, modify, read, or replace content in a file, "
+            "you MUST call `write_file`, `read_file`, `replace_in_file`, or `execute_command`. "
+            "NEVER claim or pretend you created or edited a file in your response text without invoking the corresponding tool first.\n"
+            "- When opening GUI applications or web browsers, use `execute_command` (they will run in background).\n"
+            "- Keep answers concise, natural, and conversational."
+        )
         if USER_CONTEXT and not USER_CONTEXT.startswith("<!--"):
             system_content += f"\n\n### USER CONTEXT:\n{USER_CONTEXT}"
 
