@@ -104,7 +104,7 @@ else:
         os.makedirs(os.path.dirname(CONTEXT_PATH), exist_ok=True)
         with open(CONTEXT_PATH, "w", encoding="utf-8") as f:
             f.write(
-                "<!-- Write your custom context here. Mofakir will read this to personalize its answers. -->\n"
+                "<!-- Write your custom context here. Assistant will read this to personalize its answers. -->\n"
             )
     except:
         pass
@@ -270,7 +270,7 @@ tools = [
         "type": "function",
         "function": {
             "name": "execute_command",
-            "description": "Execute a bash shell command.",
+            "description": "Execute a bash shell command. For GUI applications, open commands, or long-running processes, append '&' or invoke the command normally (they will run detached in background).",
             "parameters": {
                 "type": "object",
                 "properties": {"command": {"type": "string"}},
@@ -393,10 +393,59 @@ def write_obsidian(filename, content):
 
 def execute_command(command):
     try:
+        cmd_str = command.strip()
+        # Common GUI applications and commands intended to run as detached background processes
+        gui_launchers = [
+            "google-chrome",
+            "google-chrome-stable",
+            "chromium",
+            "firefox",
+            "nautilus",
+            "kitty",
+            "vlc",
+            "mpv",
+            "xdg-open",
+            "gtk-launch",
+            "code",
+            "zed",
+            "spotify",
+            "steam",
+            "discord",
+            "telegram-desktop",
+        ]
+
+        is_background = (
+            cmd_str.endswith("&")
+            or cmd_str.startswith("nohup ")
+            or cmd_str.startswith("uwsm app --")
+            or any(
+                cmd_str == app
+                or cmd_str.startswith(f"{app} ")
+                or f" {app} " in cmd_str
+                for app in gui_launchers
+            )
+        )
+
+        if is_background:
+            # Clean trailing '&' if present to avoid syntax issues with shell launch
+            exec_target = cmd_str.rstrip("&").strip()
+            # Launch detached in a new session and redirect std streams so Python does not wait
+            subprocess.Popen(
+                exec_target,
+                shell=True,
+                start_new_session=True,
+                stdout=subprocess.DEVNULL,
+                stderr=subprocess.DEVNULL,
+                stdin=subprocess.DEVNULL,
+            )
+            return f"Application or command launched in background: {exec_target}"
+
         res = subprocess.run(
             command, shell=True, capture_output=True, text=True, timeout=10
         )
         return (res.stdout + res.stderr)[:3000] or "Success with no output."
+    except subprocess.TimeoutExpired:
+        return f"Error: Command timed out after 10 seconds. If launching a GUI app, please specify running it in the background."
     except Exception as e:
         return f"Error: {e}"
 
@@ -894,7 +943,7 @@ class Backend(QObject):
             self.submit_query(sys.argv[1])
 
     def load_history(self):
-        system_content = "You are Mofakir, a precise CLI assistant. You MUST use the provided JSON tool calls to execute commands. Do not output raw tool names as text. Keep answers conversational."
+        system_content = "You are Assistant, an agentic AI assistant. You MUST use the provided JSON tool calls to execute commands and actions. When opening GUI applications or web browsers, use execute_command with the appropriate application command in background. Keep answers conversational."
         if USER_CONTEXT and not USER_CONTEXT.startswith("<!--"):
             system_content += f"\n\n### USER CONTEXT:\n{USER_CONTEXT}"
 
