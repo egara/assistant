@@ -135,6 +135,7 @@
                 chmod +x $out/bin/mofakir
                   
                 wrapProgram $out/bin/mofakir-gui \
+                  --set-default QT_QUICK_BACKEND software \
                   --prefix PATH : ${
                     pkgs.lib.makeBinPath [
                       pkgs.sox
