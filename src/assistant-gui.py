@@ -282,18 +282,22 @@ tools = [
         "type": "function",
         "function": {
             "name": "manage_desktop",
-            "description": "Manage workspaces depending on desktop environment.",
+            "description": "Manage workspaces and windows on Hyprland (switch workspaces or move windows to target workspace).",
             "parameters": {
                 "type": "object",
                 "properties": {
                     "action": {
                         "type": "string",
                         "enum": ["focus_workspace", "move_to_workspace"],
+                        "description": "Action to perform: 'focus_workspace' to switch active workspace, or 'move_to_workspace' to move a window.",
                     },
-                    "target": {"type": "string"},
+                    "target": {
+                        "type": "string",
+                        "description": "Target workspace number (e.g. '1', '4') or workspace name.",
+                    },
                     "window_address": {
                         "type": "string",
-                        "description": "Optional window address",
+                        "description": "Optional window identifier: address (e.g. '0x...'), application name or class (e.g. 'chrome', 'firefox'). Defaults to current active window if omitted.",
                     },
                 },
                 "required": ["action", "target"],
@@ -488,23 +492,44 @@ def perform_web_search(query):
 
 def manage_desktop(action, target, window_address=""):
     try:
-        if "hyprland" in os.environ.get("XDG_CURRENT_DESKTOP", "").lower():
-            if action == "focus_workspace":
-                cmd = ["hyprctl", "dispatch", "workspace", str(target)]
-            else:
-                cmd = (
-                    [
-                        "hyprctl",
-                        "dispatch",
-                        "movetoworkspace",
-                        f"{target},address:{window_address}",
-                    ]
-                    if window_address
-                    else ["hyprctl", "dispatch", "movetoworkspace", str(target)]
-                )
-            subprocess.run(cmd, check=True)
-            return "Success on Hyprland."
-        return "Blocked: Only Hyprland supported."
+        # Check if Hyprland is available
+        check = subprocess.run(["hyprctl", "version"], capture_output=True, text=True)
+        if check.returncode != 0:
+            return "Blocked: Only Hyprland supported."
+
+        if action == "focus_workspace":
+            target_str = str(target).strip()
+            # If target is numeric, pass as number; if string/name, quote it
+            ws_param = target_str if target_str.isdigit() else f"[[{target_str}]]"
+            lua_code = f"return hl.dispatch(hl.dsp.focus({{ workspace = {ws_param} }})).ok"
+            res = subprocess.run(["hyprctl", "repl", lua_code], capture_output=True, text=True)
+            return "Success on Hyprland." if "true" in res.stdout else f"Failed: {res.stdout.strip()}"
+
+        elif action == "move_to_workspace":
+            clean_id = (window_address or "").strip()
+            target_str = str(target).strip()
+            ws_param = target_str if target_str.isdigit() else f"[[{target_str}]]"
+            lua_code = f"""
+            local target_win = nil
+            local id = [[{clean_id}]]
+            if id ~= '' then
+                for _, w in ipairs(hl.get_windows()) do
+                    if w.address == id or w.class:lower():find(id:lower(), 1, true) or w.title:lower():find(id:lower(), 1, true) then
+                        target_win = w
+                        break
+                    end
+                end
+            end
+            if target_win then
+                hl.dispatch(hl.dsp.focus({{ window = target_win }}))
+            end
+            local res = hl.dispatch(hl.dsp.window.move({{ workspace = {ws_param} }}))
+            return res and res.ok or false
+            """
+            res = subprocess.run(["hyprctl", "repl", lua_code], capture_output=True, text=True)
+            return "Success on Hyprland." if "true" in res.stdout else f"Failed: {res.stdout.strip()}"
+
+        return f"Unknown action: {action}"
     except Exception as e:
         return f"Error: {e}"
 
