@@ -382,6 +382,11 @@ class TTSWorkerThread(QThread):
         self.current_process = None
 
     def run(self):
+        engine_type = VOICE_CONF.get("tts_engine", "online")
+        if engine_type in ("none", "disabled", "off", None):
+            self.finished_signal.emit()
+            return
+
         audio_path = os.path.join(TEMP_DIR, "tts.wav")
         try:
             detected_lang = detect(self.text)
@@ -391,7 +396,7 @@ class TTSWorkerThread(QThread):
         if self._is_stopped:
             return
 
-        if VOICE_CONF.get("tts_engine", "online") == "online":
+        if engine_type == "online":
             self.status_signal.emit("🔊 Speaking...", "#89b4fa")
             voice = VOICE_CONF.get("tts_online_voices", {}).get(
                 detected_lang, "en-US-GuyNeural"
