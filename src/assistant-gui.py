@@ -39,11 +39,14 @@ urllib3.disable_warnings(urllib3.exceptions.InsecureRequestWarning)
 CONFIG_DIR = os.path.expanduser("~/.config/assistant")
 CONFIG_FILE = os.path.join(CONFIG_DIR, "config.json")
 TEMP_DIR = "/tmp/assistant"
-SOUND_DIR = os.path.expanduser("~/.local/share/assistant/sounds")
+DATA_DIR = os.path.expanduser("~/.local/share/assistant")
+SOUND_DIR = os.path.join(DATA_DIR, "sounds")
 HISTORY_DIR = os.path.expanduser("~/.local/state/assistant")
 HISTORY_FILE = os.path.join(HISTORY_DIR, "chat_history.json")
+USER_KNOWLEDGE_FILE = os.path.join(DATA_DIR, "hyprland_knowledge.json")
 
 os.makedirs(CONFIG_DIR, exist_ok=True)
+os.makedirs(DATA_DIR, exist_ok=True)
 os.makedirs(SOUND_DIR, exist_ok=True)
 os.makedirs(HISTORY_DIR, exist_ok=True)
 
@@ -56,17 +59,16 @@ qml_paths_to_check = [
     os.path.expanduser("~/.local/share/assistant/ui.qml"),
 ]
 
-knowledge_paths_to_check = [
-    os.path.join(CONFIG_DIR, "hyprland_knowledge.json"),
+# Factory (system/immutable) knowledge paths
+system_knowledge_paths = [
     os.path.join(_base_dir, "hyprland_knowledge.json"),
     os.path.abspath(os.path.join(_base_dir, "..", "share", "assistant", "hyprland_knowledge.json")),
-    os.path.expanduser("~/.local/share/assistant/hyprland_knowledge.json"),
 ]
 
-HYPRLAND_KNOWLEDGE_FILE = None
-for path in knowledge_paths_to_check:
+SYSTEM_KNOWLEDGE_FILE = None
+for path in system_knowledge_paths:
     if os.path.exists(path):
-        HYPRLAND_KNOWLEDGE_FILE = path
+        SYSTEM_KNOWLEDGE_FILE = path
         break
 
 QML_FILE = None
@@ -764,14 +766,108 @@ def get_hyprland_version():
 
 
 def load_hyprland_recipes():
-    """Load versioned Hyprland dispatch recipes from hyprland_knowledge.json."""
-    if HYPRLAND_KNOWLEDGE_FILE and os.path.exists(HYPRLAND_KNOWLEDGE_FILE):
+    """Load and merge Hyprland recipes (Factory system recipes + User mutable recipes)."""
+    merged = {}
+    # 1. System/factory recipes (base)
+    if SYSTEM_KNOWLEDGE_FILE and os.path.exists(SYSTEM_KNOWLEDGE_FILE):
         try:
-            with open(HYPRLAND_KNOWLEDGE_FILE, "r", encoding="utf-8") as f:
-                return json.load(f)
+            with open(SYSTEM_KNOWLEDGE_FILE, "r", encoding="utf-8") as f:
+                merged = json.load(f)
         except Exception as e:
-            print(f"[Hyprland Knowledge] Error loading file: {e}")
-    return {}
+            print(f"[Hyprland Knowledge] Error loading system recipes: {e}")
+
+    # 2. User mutable recipes in ~/.local/share/assistant (highest priority)
+    if os.path.exists(USER_KNOWLEDGE_FILE):
+        try:
+            with open(USER_KNOWLEDGE_FILE, "r", encoding="utf-8") as f:
+                user_recipes = json.load(f)
+                for ver, acts in user_recipes.items():
+                    if ver.startswith("_"):
+                        continue
+                    if ver not in merged:
+                        merged[ver] = {}
+                    merged[ver].update(acts)
+        except Exception as e:
+            print(f"[Hyprland Knowledge] Error loading user recipes: {e}")
+
+    return merged
+
+
+def save_user_hyprland_recipe(version, action, recipe_dict):
+    """Persist newly learned recipe in mutable ~/.local/share/assistant/hyprland_knowledge.json."""
+    try:
+        user_data = {}
+        if os.path.exists(USER_KNOWLEDGE_FILE):
+            try:
+                with open(USER_KNOWLEDGE_FILE, "r", encoding="utf-8") as f:
+                    user_data = json.load(f)
+            except:
+                user_data = {}
+
+        if version not in user_data:
+            user_data[version] = {}
+        user_data[version][action] = recipe_dict
+
+        with open(USER_KNOWLEDGE_FILE, "w", encoding="utf-8") as f:
+            json.dump(user_data, f, indent=2)
+        return True
+    except Exception as e:
+        print(f"[Hyprland Knowledge] Failed to save recipe: {e}")
+        return False
+
+
+def discover_and_learn_action(action, version):
+    """Introspect Hyprland hl.dsp dispatchers in real time and learn unknown actions."""
+    try:
+        norm = action.lower().replace("-", "_").replace(" ", "_")
+        script = 'local t = {}; for k, v in pairs(hl.dsp) do if type(v) == "function" then table.insert(t, k) elseif type(v) == "table" then for sk, sv in pairs(v) do if type(sv) == "function" then table.insert(t, k .. "." .. sk) end end end end; return table.concat(t, ",")'
+        res = subprocess.run(["hyprctl", "repl", script], capture_output=True, text=True, timeout=2)
+        if res.returncode != 0:
+            return None
+
+        candidates = [c.strip() for c in res.stdout.split(",") if c.strip()]
+        matched_call = None
+        for cand in candidates:
+            cand_simple = cand.replace(".", "_")
+            if norm == cand_simple or norm in cand_simple:
+                matched_call = cand
+                break
+
+        if not matched_call:
+            # Common synonyms mapping
+            synonyms = {
+                "center": "window.center",
+                "center_window": "window.center",
+                "pin": "window.pin",
+                "float": "window.float",
+                "floating": "window.float",
+                "tile": "window.float",
+                "fullscreen": "window.fullscreen",
+                "kill": "window.close",
+                "kill_window": "window.close",
+                "close": "window.close",
+                "bring_to_top": "window.bring_to_top",
+                "toggle_special": "workspace.toggle_special",
+                "special_workspace": "workspace.toggle_special",
+                "group_toggle": "group.toggle",
+                "toggle_group": "group.toggle",
+            }
+            if norm in synonyms and synonyms[norm] in candidates:
+                matched_call = synonyms[norm]
+
+        if matched_call:
+            recipe = {
+                "type": "lua_eval",
+                "command": f"return hl.dispatch(hl.dsp.{matched_call}()).ok",
+                "description": f"Auto-discovered dispatcher {matched_call}",
+            }
+            save_user_hyprland_recipe(version, action, recipe)
+            return recipe
+
+    except Exception as e:
+        print(f"[Hyprland Auto-Discovery] Error: {e}")
+
+    return None
 
 
 def manage_desktop(action, target="", window_address=""):
@@ -787,8 +883,15 @@ def manage_desktop(action, target="", window_address=""):
         ver_recipes = recipes.get(ver) or recipes.get("default", {})
         recipe = ver_recipes.get(action)
 
+        # Auto-discover if not currently in knowledge base
+        learned_notice = ""
         if not recipe:
-            return f"Action '{action}' not found in hyprland_knowledge (v{ver})."
+            discovered = discover_and_learn_action(action, ver)
+            if discovered:
+                recipe = discovered
+                learned_notice = f" [Learned & saved to ~/.local/share/assistant/hyprland_knowledge.json]"
+            else:
+                return f"Action '{action}' could not be executed or auto-discovered on Hyprland (v{ver})."
 
         target_str = str(target or "").strip()
         ws_param = target_str if target_str.isdigit() else f"[[{target_str}]]"
@@ -798,17 +901,17 @@ def manage_desktop(action, target="", window_address=""):
         if recipe_type == "lua_eval":
             code = recipe.get("command", "").replace("{target}", ws_param).replace("{window}", win_param)
             res = subprocess.run(["hyprctl", "eval", code], capture_output=True, text=True, timeout=3)
-            return f"Success on Hyprland (v{ver})." if res.returncode == 0 else f"Failed: {res.stderr or res.stdout}"
+            return f"Success on Hyprland (v{ver}).{learned_notice}" if res.returncode == 0 else f"Failed: {res.stderr or res.stdout}"
 
         elif recipe_type == "lua_repl":
             code = recipe.get("script", "").replace("{target}", ws_param).replace("{window}", win_param)
             res = subprocess.run(["hyprctl", "repl", code], capture_output=True, text=True, timeout=3)
-            return f"Success on Hyprland (v{ver})." if "true" in res.stdout else f"Failed: {res.stdout.strip()}"
+            return f"Success on Hyprland (v{ver}).{learned_notice}" if "true" in res.stdout else f"Failed: {res.stdout.strip()}"
 
         elif recipe_type == "cli":
             cmd = recipe.get("command", "").replace("{target}", target_str).replace("{window}", win_param)
             res = subprocess.run(cmd, shell=True, capture_output=True, text=True, timeout=3)
-            return f"Success on Hyprland (v{ver})." if res.returncode == 0 else f"Failed: {res.stderr or res.stdout}"
+            return f"Success on Hyprland (v{ver}).{learned_notice}" if res.returncode == 0 else f"Failed: {res.stderr or res.stdout}"
 
         return f"Unknown recipe type for action {action}."
     except Exception as e:
