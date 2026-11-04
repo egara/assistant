@@ -384,7 +384,7 @@ tools = [
         "type": "function",
         "function": {
             "name": "manage_desktop",
-            "description": "Manage workspaces and windows on Hyprland using version-aware recipes (switch workspaces, move windows, toggle floating, fullscreen, or close window).",
+            "description": "Manage workspaces and windows on Hyprland using version-aware recipes (switch workspaces, move windows, toggle floating, fullscreen, or close a window). IMPORTANT: If the user mentions a specific application or window (e.g. 'cierra chrome', 'minimiza firefox'), you MUST provide 'window_address' with the application name/class (e.g. 'chrome', 'firefox') so the action is applied to that specific window instead of the currently active/focused window.",
             "parameters": {
                 "type": "object",
                 "properties": {
@@ -397,6 +397,7 @@ tools = [
                             "toggle_fullscreen",
                             "close_window",
                             "pin_window",
+                            "center_window",
                         ],
                         "description": "Desktop action to perform.",
                     },
@@ -406,7 +407,7 @@ tools = [
                     },
                     "window_address": {
                         "type": "string",
-                        "description": "Optional window identifier: address (e.g. '0x...'), application name or class (e.g. 'firefox', 'kitty'). Defaults to active window if omitted.",
+                        "description": "Target application name, class, title, or address (e.g. 'chrome', 'google-chrome', 'firefox', 'kitty', '0x...'). When specified, targets and focuses this window before performing the action. If omitted, applies to the currently active window.",
                     },
                 },
                 "required": ["action"],
@@ -856,11 +857,38 @@ def discover_and_learn_action(action, version):
                 matched_call = synonyms[norm]
 
         if matched_call:
-            recipe = {
-                "type": "lua_eval",
-                "command": f"return hl.dispatch(hl.dsp.{matched_call}()).ok",
-                "description": f"Auto-discovered dispatcher {matched_call}",
-            }
+            if matched_call.startswith("window."):
+                fn_name = matched_call.split("window.", 1)[1]
+                recipe = {
+                    "type": "lua_repl",
+                    "script": (
+                        "local target_win = nil\n"
+                        "local id = [[{window}]]\n"
+                        "if id ~= '' then\n"
+                        "  for _, w in ipairs(hl.get_windows()) do\n"
+                        "    if w.address == id or w.class:lower():find(id:lower(), 1, true) or w.title:lower():find(id:lower(), 1, true) then\n"
+                        "      target_win = w\n"
+                        "      break\n"
+                        "    end\n"
+                        "  end\n"
+                        "end\n"
+                        "if target_win then\n"
+                        "  hl.dispatch(hl.dsp.focus({ window = target_win }))\n"
+                        f"  local res = hl.dispatch(hl.dsp.window.{fn_name}())\n"
+                        "  return res and res.ok or false\n"
+                        "else\n"
+                        f"  local res = hl.dispatch(hl.dsp.window.{fn_name}())\n"
+                        "  return res and res.ok or false\n"
+                        "end"
+                    ),
+                    "description": f"Auto-discovered window dispatcher {matched_call}",
+                }
+            else:
+                recipe = {
+                    "type": "lua_eval",
+                    "command": f"return hl.dispatch(hl.dsp.{matched_call}()).ok",
+                    "description": f"Auto-discovered dispatcher {matched_call}",
+                }
             save_user_hyprland_recipe(version, action, recipe)
             return recipe
 

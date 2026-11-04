@@ -1,5 +1,5 @@
 {
-  "_description": "Hyprland dispatch recipes indexed by major.minor version and action. Fallback is used if version is not explicitly matched.",
+  "_description": "Hyprland dispatch recipes indexed by major.minor version and action. Window-targeting recipes search by class, title, or address and focus the target before applying the action.",
   "0.57": {
     "focus_workspace": {
       "type": "lua_eval",
@@ -12,24 +12,29 @@
       "description": "Move window (by class/title/address) or active window to target workspace"
     },
     "close_window": {
-      "type": "lua_eval",
-      "command": "return hl.dispatch(hl.dsp.window.close()).ok",
-      "description": "Close currently active window"
+      "type": "lua_repl",
+      "script": "local target_win = nil\nlocal id = [[{window}]]\nif id ~= '' then\n  for _, w in ipairs(hl.get_windows()) do\n    if w.address == id or w.class:lower():find(id:lower(), 1, true) or w.title:lower():find(id:lower(), 1, true) then\n      target_win = w\n      break\n    end\n  end\nend\nif target_win then\n  hl.dispatch(hl.dsp.focus({ window = target_win }))\n  local res = hl.dispatch(hl.dsp.window.close({ window = target_win }))\n  return res and res.ok or false\nelse\n  local res = hl.dispatch(hl.dsp.window.close())\n  return res and res.ok or false\nend",
+      "description": "Close specified window (by class/title/address) or currently active window"
     },
     "toggle_fullscreen": {
-      "type": "lua_eval",
-      "command": "return hl.dispatch(hl.dsp.window.fullscreen()).ok",
-      "description": "Toggle fullscreen on active window"
+      "type": "lua_repl",
+      "script": "local target_win = nil\nlocal id = [[{window}]]\nif id ~= '' then\n  for _, w in ipairs(hl.get_windows()) do\n    if w.address == id or w.class:lower():find(id:lower(), 1, true) or w.title:lower():find(id:lower(), 1, true) then\n      target_win = w\n      break\n    end\n  end\nend\nif target_win then\n  hl.dispatch(hl.dsp.focus({ window = target_win }))\nend\nlocal res = hl.dispatch(hl.dsp.window.fullscreen())\nreturn res and res.ok or false",
+      "description": "Toggle fullscreen on specified window or active window"
     },
     "toggle_floating": {
-      "type": "lua_eval",
-      "command": "return hl.dispatch(hl.dsp.window.float()).ok",
-      "description": "Toggle floating / tiling mode on active window"
+      "type": "lua_repl",
+      "script": "local target_win = nil\nlocal id = [[{window}]]\nif id ~= '' then\n  for _, w in ipairs(hl.get_windows()) do\n    if w.address == id or w.class:lower():find(id:lower(), 1, true) or w.title:lower():find(id:lower(), 1, true) then\n      target_win = w\n      break\n    end\n  end\nend\nif target_win then\n  hl.dispatch(hl.dsp.focus({ window = target_win }))\nend\nlocal res = hl.dispatch(hl.dsp.window.float())\nreturn res and res.ok or false",
+      "description": "Toggle floating / tiling mode on specified window or active window"
     },
     "pin_window": {
-      "type": "lua_eval",
-      "command": "return hl.dispatch(hl.dsp.window.pin()).ok",
-      "description": "Pin active window across all workspaces"
+      "type": "lua_repl",
+      "script": "local target_win = nil\nlocal id = [[{window}]]\nif id ~= '' then\n  for _, w in ipairs(hl.get_windows()) do\n    if w.address == id or w.class:lower():find(id:lower(), 1, true) or w.title:lower():find(id:lower(), 1, true) then\n      target_win = w\n      break\n    end\n  end\nend\nif target_win then\n  hl.dispatch(hl.dsp.focus({ window = target_win }))\nend\nlocal res = hl.dispatch(hl.dsp.window.pin())\nreturn res and res.ok or false",
+      "description": "Pin window across all workspaces"
+    },
+    "center_window": {
+      "type": "lua_repl",
+      "script": "local target_win = nil\nlocal id = [[{window}]]\nif id ~= '' then\n  for _, w in ipairs(hl.get_windows()) do\n    if w.address == id or w.class:lower():find(id:lower(), 1, true) or w.title:lower():find(id:lower(), 1, true) then\n      target_win = w\n      break\n    end\n  end\nend\nif target_win then\n  hl.dispatch(hl.dsp.focus({ window = target_win }))\nend\nlocal res = hl.dispatch(hl.dsp.window.center())\nreturn res and res.ok or false",
+      "description": "Center window on screen"
     }
   },
   "default": {
@@ -44,19 +49,19 @@
       "description": "Move window or active window to target workspace"
     },
     "close_window": {
-      "type": "lua_eval",
-      "command": "return hl.dispatch(hl.dsp.window.close()).ok",
-      "description": "Close currently active window"
+      "type": "lua_repl",
+      "script": "local target_win = nil\nlocal id = [[{window}]]\nif id ~= '' then\n  for _, w in ipairs(hl.get_windows()) do\n    if w.address == id or w.class:lower():find(id:lower(), 1, true) or w.title:lower():find(id:lower(), 1, true) then\n      target_win = w\n      break\n    end\n  end\nend\nif target_win then\n  hl.dispatch(hl.dsp.focus({ window = target_win }))\n  local res = hl.dispatch(hl.dsp.window.close({ window = target_win }))\n  return res and res.ok or false\nelse\n  local res = hl.dispatch(hl.dsp.window.close())\n  return res and res.ok or false\nend",
+      "description": "Close specified window or currently active window"
     },
     "toggle_fullscreen": {
-      "type": "lua_eval",
-      "command": "return hl.dispatch(hl.dsp.window.fullscreen()).ok",
-      "description": "Toggle fullscreen on active window"
+      "type": "lua_repl",
+      "script": "local target_win = nil\nlocal id = [[{window}]]\nif id ~= '' then\n  for _, w in ipairs(hl.get_windows()) do\n    if w.address == id or w.class:lower():find(id:lower(), 1, true) or w.title:lower():find(id:lower(), 1, true) then\n      target_win = w\n      break\n    end\n  end\nend\nif target_win then\n  hl.dispatch(hl.dsp.focus({ window = target_win }))\nend\nlocal res = hl.dispatch(hl.dsp.window.fullscreen())\nreturn res and res.ok or false",
+      "description": "Toggle fullscreen on specified window or active window"
     },
     "toggle_floating": {
-      "type": "lua_eval",
-      "command": "return hl.dispatch(hl.dsp.window.float()).ok",
-      "description": "Toggle floating mode on active window"
+      "type": "lua_repl",
+      "script": "local target_win = nil\nlocal id = [[{window}]]\nif id ~= '' then\n  for _, w in ipairs(hl.get_windows()) do\n    if w.address == id or w.class:lower():find(id:lower(), 1, true) or w.title:lower():find(id:lower(), 1, true) then\n      target_win = w\n      break\n    end\n  end\nend\nif target_win then\n  hl.dispatch(hl.dsp.focus({ window = target_win }))\nend\nlocal res = hl.dispatch(hl.dsp.window.float())\nreturn res and res.ok or false",
+      "description": "Toggle floating mode on specified window or active window"
     }
   }
 }
