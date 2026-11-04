@@ -47,7 +47,7 @@ os.makedirs(CONFIG_DIR, exist_ok=True)
 os.makedirs(SOUND_DIR, exist_ok=True)
 os.makedirs(HISTORY_DIR, exist_ok=True)
 
-# Smart UI Path Resolver
+# Smart UI & Knowledge Path Resolver
 _base_dir = os.path.dirname(os.path.abspath(__file__))
 qml_paths_to_check = [
     os.path.join(CONFIG_DIR, "ui.qml"),
@@ -55,6 +55,19 @@ qml_paths_to_check = [
     os.path.abspath(os.path.join(_base_dir, "..", "share", "assistant", "ui.qml")),
     os.path.expanduser("~/.local/share/assistant/ui.qml"),
 ]
+
+knowledge_paths_to_check = [
+    os.path.join(CONFIG_DIR, "hyprland_knowledge.json"),
+    os.path.join(_base_dir, "hyprland_knowledge.json"),
+    os.path.abspath(os.path.join(_base_dir, "..", "share", "assistant", "hyprland_knowledge.json")),
+    os.path.expanduser("~/.local/share/assistant/hyprland_knowledge.json"),
+]
+
+HYPRLAND_KNOWLEDGE_FILE = None
+for path in knowledge_paths_to_check:
+    if os.path.exists(path):
+        HYPRLAND_KNOWLEDGE_FILE = path
+        break
 
 QML_FILE = None
 for path in qml_paths_to_check:
@@ -369,25 +382,32 @@ tools = [
         "type": "function",
         "function": {
             "name": "manage_desktop",
-            "description": "Manage workspaces and windows on Hyprland (switch workspaces or move windows to target workspace).",
+            "description": "Manage workspaces and windows on Hyprland using version-aware recipes (switch workspaces, move windows, toggle floating, fullscreen, or close window).",
             "parameters": {
                 "type": "object",
                 "properties": {
                     "action": {
                         "type": "string",
-                        "enum": ["focus_workspace", "move_to_workspace"],
-                        "description": "Action to perform: 'focus_workspace' to switch active workspace, or 'move_to_workspace' to move a window.",
+                        "enum": [
+                            "focus_workspace",
+                            "move_to_workspace",
+                            "toggle_floating",
+                            "toggle_fullscreen",
+                            "close_window",
+                            "pin_window",
+                        ],
+                        "description": "Desktop action to perform.",
                     },
                     "target": {
                         "type": "string",
-                        "description": "Target workspace number (e.g. '1', '4') or workspace name.",
+                        "description": "Target workspace number (e.g. '1', '2') or name. Required for workspace actions.",
                     },
                     "window_address": {
                         "type": "string",
-                        "description": "Optional window identifier: address (e.g. '0x...'), application name or class (e.g. 'chrome', 'firefox'). Defaults to current active window if omitted.",
+                        "description": "Optional window identifier: address (e.g. '0x...'), application name or class (e.g. 'firefox', 'kitty'). Defaults to active window if omitted.",
                     },
                 },
-                "required": ["action", "target"],
+                "required": ["action"],
             },
         },
     },
@@ -730,46 +750,67 @@ def perform_web_search(query):
     return deep_web_search(query)
 
 
-def manage_desktop(action, target, window_address=""):
+def get_hyprland_version():
+    """Detect current Hyprland version (e.g. '0.57.0' -> '0.57')."""
     try:
-        # Check if Hyprland is available
-        check = subprocess.run(["hyprctl", "version"], capture_output=True, text=True)
-        if check.returncode != 0:
-            return "Blocked: Only Hyprland supported."
+        res = subprocess.run(["hyprctl", "version"], capture_output=True, text=True, timeout=2)
+        if res.returncode == 0:
+            m = re.search(r"Hyprland\s+([0-9]+\.[0-9]+)", res.stdout)
+            if m:
+                return m.group(1)
+    except:
+        pass
+    return "default"
 
-        if action == "focus_workspace":
-            target_str = str(target).strip()
-            # If target is numeric, pass as number; if string/name, quote it
-            ws_param = target_str if target_str.isdigit() else f"[[{target_str}]]"
-            lua_code = f"return hl.dispatch(hl.dsp.focus({{ workspace = {ws_param} }})).ok"
-            res = subprocess.run(["hyprctl", "repl", lua_code], capture_output=True, text=True)
-            return "Success on Hyprland." if "true" in res.stdout else f"Failed: {res.stdout.strip()}"
 
-        elif action == "move_to_workspace":
-            clean_id = (window_address or "").strip()
-            target_str = str(target).strip()
-            ws_param = target_str if target_str.isdigit() else f"[[{target_str}]]"
-            lua_code = f"""
-            local target_win = nil
-            local id = [[{clean_id}]]
-            if id ~= '' then
-                for _, w in ipairs(hl.get_windows()) do
-                    if w.address == id or w.class:lower():find(id:lower(), 1, true) or w.title:lower():find(id:lower(), 1, true) then
-                        target_win = w
-                        break
-                    end
-                end
-            end
-            if target_win then
-                hl.dispatch(hl.dsp.focus({{ window = target_win }}))
-            end
-            local res = hl.dispatch(hl.dsp.window.move({{ workspace = {ws_param} }}))
-            return res and res.ok or false
-            """
-            res = subprocess.run(["hyprctl", "repl", lua_code], capture_output=True, text=True)
-            return "Success on Hyprland." if "true" in res.stdout else f"Failed: {res.stdout.strip()}"
+def load_hyprland_recipes():
+    """Load versioned Hyprland dispatch recipes from hyprland_knowledge.json."""
+    if HYPRLAND_KNOWLEDGE_FILE and os.path.exists(HYPRLAND_KNOWLEDGE_FILE):
+        try:
+            with open(HYPRLAND_KNOWLEDGE_FILE, "r", encoding="utf-8") as f:
+                return json.load(f)
+        except Exception as e:
+            print(f"[Hyprland Knowledge] Error loading file: {e}")
+    return {}
 
-        return f"Unknown action: {action}"
+
+def manage_desktop(action, target="", window_address=""):
+    try:
+        ver = get_hyprland_version()
+        if ver == "default":
+            # Check basic hyprctl presence
+            check = subprocess.run(["hyprctl", "version"], capture_output=True, text=True, timeout=2)
+            if check.returncode != 0:
+                return "Blocked: Only Hyprland supported."
+
+        recipes = load_hyprland_recipes()
+        ver_recipes = recipes.get(ver) or recipes.get("default", {})
+        recipe = ver_recipes.get(action)
+
+        if not recipe:
+            return f"Action '{action}' not found in hyprland_knowledge (v{ver})."
+
+        target_str = str(target or "").strip()
+        ws_param = target_str if target_str.isdigit() else f"[[{target_str}]]"
+        win_param = str(window_address or "").strip()
+
+        recipe_type = recipe.get("type")
+        if recipe_type == "lua_eval":
+            code = recipe.get("command", "").replace("{target}", ws_param).replace("{window}", win_param)
+            res = subprocess.run(["hyprctl", "eval", code], capture_output=True, text=True, timeout=3)
+            return f"Success on Hyprland (v{ver})." if res.returncode == 0 else f"Failed: {res.stderr or res.stdout}"
+
+        elif recipe_type == "lua_repl":
+            code = recipe.get("script", "").replace("{target}", ws_param).replace("{window}", win_param)
+            res = subprocess.run(["hyprctl", "repl", code], capture_output=True, text=True, timeout=3)
+            return f"Success on Hyprland (v{ver})." if "true" in res.stdout else f"Failed: {res.stdout.strip()}"
+
+        elif recipe_type == "cli":
+            cmd = recipe.get("command", "").replace("{target}", target_str).replace("{window}", win_param)
+            res = subprocess.run(cmd, shell=True, capture_output=True, text=True, timeout=3)
+            return f"Success on Hyprland (v{ver})." if res.returncode == 0 else f"Failed: {res.stderr or res.stdout}"
+
+        return f"Unknown recipe type for action {action}."
     except Exception as e:
         return f"Error: {e}"
 

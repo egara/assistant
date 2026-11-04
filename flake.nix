@@ -91,6 +91,9 @@
                 fi
 
                 cp src/ui.qml $out/share/assistant/ui.qml
+                if [ -f "src/hyprland_knowledge.json" ]; then
+                  cp src/hyprland_knowledge.json $out/share/assistant/hyprland_knowledge.json
+                fi
 
                 cp ${whisperSmall} $out/share/assistant/models/ggml-small.bin
 
