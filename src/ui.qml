@@ -11,6 +11,11 @@ ApplicationWindow {
     color: "#0b0f19"
 
     property int activeAiIndex: -1
+    readonly property int systemFontSize: window.font.pixelSize > 0 ? window.font.pixelSize : (window.font.pointSize > 0 ? Math.round(window.font.pointSize * 1.33) : 14)
+
+    Component.onCompleted: {
+        inputBox.forceActiveFocus();
+    }
 
     Connections {
         target: backend
@@ -87,6 +92,7 @@ ApplicationWindow {
             model: chatModel
             spacing: 15
             clip: true
+            bottomMargin: 15
             ScrollBar.vertical: ScrollBar {
                 policy: ScrollBar.AsNeeded
                 contentItem: Rectangle {
@@ -104,7 +110,8 @@ ApplicationWindow {
                     id: textMetric
                     text: role === "approval" ? "⚠️ **Action Required**\n\nThe AI wants to execute an unverified command:\n\n`" + msgText + "`" : msgText
                     textFormat: Text.MarkdownText
-                    font.pixelSize: 14
+                    font.family: window.font.family
+                    font.pixelSize: window.systemFontSize
                     visible: false
                 }
 
@@ -157,7 +164,8 @@ ApplicationWindow {
                             textFormat: TextEdit.MarkdownText
                             readOnly: true
                             selectByMouse: true
-                            font.pixelSize: 14
+                            font.family: textMetric.font.family
+                            font.pixelSize: textMetric.font.pixelSize
                             selectedTextColor: "#ffffff"
                             selectionColor: "#585b70"
                             onLinkActivated: link => Qt.openUrlExternally(link)
@@ -245,7 +253,8 @@ ApplicationWindow {
                     id: inputBox
                     placeholderText: "Type a message, or press 'v' to use voice..."
                     color: "#cdd6f4"
-                    font.pixelSize: 14
+                    font.family: window.font.family
+                    font.pixelSize: window.systemFontSize
                     wrapMode: TextArea.Wrap
                     padding: 12
 
