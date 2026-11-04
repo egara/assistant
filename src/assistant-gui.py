@@ -1477,6 +1477,19 @@ class AIGeneratorThread(QThread):
 
                 # If all executed actions were silent desktop operations that succeeded, finish immediately!
                 if all_tools_silent:
+                    # Append an assistant record to conversation memory so the LLM knows this request was resolved
+                    # without leaving dangling consecutive user messages in the history context.
+                    executed_desc = ", ".join(
+                        f"{tc['function']['name']}({tc['function'].get('arguments', '')})"
+                        for tc in tool_calls
+                    )
+                    self.messages.append(
+                        {
+                            "role": "assistant",
+                            "content": f"[Action executed silently: {executed_desc}]",
+                            "is_silent": True,
+                        }
+                    )
                     self.status_signal.emit("Idle", "#6c7086")
                     self.history_save_signal.emit()
                     self.finished_signal.emit("")
@@ -1607,7 +1620,7 @@ class Backend(QObject):
         if self.is_voice_mode:
             self.statusChanged.emit("🎙️ Voice Mode Active", "#a6e3a1")
         for msg in self.messages:
-            if msg["role"] != "system":
+            if msg["role"] != "system" and not msg.get("is_silent"):
                 role_str = "ai" if msg["role"] == "assistant" else "user"
                 self.messageAdded.emit(role_str, msg["content"])
 
