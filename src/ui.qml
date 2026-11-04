@@ -89,11 +89,15 @@ ApplicationWindow {
             id: chatListView
             Layout.fillWidth: true
             Layout.fillHeight: true
-            Layout.bottomMargin: 10
+            Layout.bottomMargin: 15
             model: chatModel
             spacing: 15
             clip: true
             bottomMargin: 15
+            footer: Item {
+                width: chatListView.width
+                height: 20
+            }
             ScrollBar.vertical: ScrollBar {
                 policy: ScrollBar.AsNeeded
                 contentItem: Rectangle {
