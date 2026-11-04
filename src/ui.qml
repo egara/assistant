@@ -56,6 +56,10 @@ ApplicationWindow {
                 chatModel.remove(chatModel.count - 1);
             }
         }
+        function onChatCleared() {
+            chatModel.clear();
+            activeAiIndex = -1;
+        }
     }
 
     ListModel {
@@ -204,6 +208,28 @@ ApplicationWindow {
         RowLayout {
             Layout.fillWidth: true
             spacing: 10
+
+            Button {
+                id: helpButton
+                text: "❓"
+                Layout.preferredWidth: 60
+                Layout.preferredHeight: 60
+                ToolTip.visible: hovered
+                ToolTip.text: "Ayuda y comandos (/new, /clear, /help)"
+                background: Rectangle {
+                    color: parent.down ? "#89b4fa" : (parent.hovered ? "#45475a" : "#1e1e2e")
+                    radius: 16
+                    border.color: parent.hovered ? "#89b4fa" : "#313244"
+                    border.width: 1
+                }
+                contentItem: Text {
+                    text: parent.text
+                    font.pixelSize: 22
+                    horizontalAlignment: Text.AlignHCenter
+                    verticalAlignment: Text.AlignVCenter
+                }
+                onClicked: backend.show_help()
+            }
 
             ScrollView {
                 Layout.fillWidth: true

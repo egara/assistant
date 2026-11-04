@@ -1210,6 +1210,7 @@ class Backend(QObject):
     statusChanged = pyqtSignal(str, str)
     messageAdded = pyqtSignal(str, str)
     messageAppended = pyqtSignal(str)
+    chatCleared = pyqtSignal()
     inputStateChanged = pyqtSignal(bool)
     stopButtonStateChanged = pyqtSignal(bool)
     requireApproval = pyqtSignal(str)
@@ -1247,7 +1248,7 @@ class Backend(QObject):
         if len(sys.argv) > 1 and sys.argv[1].strip():
             self.submit_query(sys.argv[1])
 
-    def load_history(self):
+    def _build_system_prompt(self):
         system_content = (
             "You are Assistant, an agentic AI desktop assistant with direct system access. "
             "You MUST use the provided JSON tool calls to interact with the system, files, and applications.\n"
@@ -1259,7 +1260,10 @@ class Backend(QObject):
         )
         if USER_CONTEXT and not USER_CONTEXT.startswith("<!--"):
             system_content += f"\n\n### USER CONTEXT:\n{USER_CONTEXT}"
+        return system_content
 
+    def load_history(self):
+        system_content = self._build_system_prompt()
         self.messages = []
         if os.path.exists(HISTORY_FILE) and (
             time.time() - os.path.getmtime(HISTORY_FILE)
@@ -1275,6 +1279,34 @@ class Backend(QObject):
                 pass
 
         self.messages.insert(0, {"role": "system", "content": system_content})
+
+    @pyqtSlot()
+    def reset_session(self):
+        """Reset conversation context and clear screen."""
+        self.interrupt_ai()
+        self.messages = [{"role": "system", "content": self._build_system_prompt()}]
+        if os.path.exists(HISTORY_FILE):
+            try:
+                os.remove(HISTORY_FILE)
+            except:
+                pass
+        self.chatCleared.emit()
+        self.messageAdded.emit(
+            "sys",
+            "✨ Nueva sesión iniciada. Contexto anterior eliminado."
+        )
+
+    @pyqtSlot()
+    def show_help(self):
+        """Display available slash commands and shortcuts."""
+        help_text = (
+            "💡 **Comandos disponibles:**\n\n"
+            "- **/new** o **/reset**: Inicia una nueva sesión desde cero, eliminando el contexto y limpiando el chat.\n"
+            "- **/clear**: Limpia los mensajes en pantalla y vacía la memoria de la conversación.\n"
+            "- **/help**: Muestra esta información de ayuda.\n"
+            "- **'v'**: Escribe 'v' y pulsa Enter para activar el modo de voz instantáneamente."
+        )
+        self.messageAdded.emit("sys", help_text)
 
     @pyqtSlot()
     def save_history(self):
@@ -1330,6 +1362,17 @@ class Backend(QObject):
 
     @pyqtSlot(str)
     def processInput(self, text):
+        clean_cmd = text.strip().lower()
+        if clean_cmd in ["/new", "/reset"]:
+            self.reset_session()
+            return
+        elif clean_cmd == "/clear":
+            self.reset_session()
+            return
+        elif clean_cmd == "/help":
+            self.show_help()
+            return
+
         self.interrupt_ai()
         self.is_voice_mode = False
         self.statusChanged.emit("Idle", "#6c7086")
