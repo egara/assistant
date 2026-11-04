@@ -660,8 +660,23 @@ def replace_in_file(path, target, replacement):
 
 def execute_command(command):
     try:
-        cmd_str = command.strip()
-        # Common GUI applications and commands intended to run as detached background processes
+        cmd_str = command.strip().rstrip("&").strip()
+
+        # Terminal UI (TUI) applications that require a terminal emulator (Kitty) to display
+        tui_apps = [
+            "yazi",
+            "btop",
+            "htop",
+            "lazygit",
+            "lazyssh",
+            "herdr",
+            "nvtop",
+            "ranger",
+            "neovim",
+            "nvim",
+        ]
+
+        # Common GUI applications intended to run as detached desktop processes
         gui_launchers = [
             "google-chrome",
             "google-chrome-stable",
@@ -675,16 +690,26 @@ def execute_command(command):
             "gtk-launch",
             "code",
             "zed",
+            "zeditor",
             "spotify",
             "steam",
             "discord",
             "telegram-desktop",
+            "obsidian",
         ]
 
-        is_background = (
-            cmd_str.endswith("&")
-            or cmd_str.startswith("nohup ")
-            or cmd_str.startswith("uwsm app --")
+        # 1. Check if it's a TUI app that needs to be launched inside Kitty
+        is_tui = any(
+            cmd_str == app or cmd_str.startswith(f"{app} ")
+            for app in tui_apps
+        )
+        if is_tui:
+            cmd_str = f"kitty {cmd_str}"
+
+        # 2. Check if it is a desktop app (GUI or wrapped TUI) that should launch under uwsm app
+        is_desktop_app = (
+            cmd_str.startswith("uwsm app --")
+            or is_tui
             or any(
                 cmd_str == app
                 or cmd_str.startswith(f"{app} ")
@@ -693,20 +718,23 @@ def execute_command(command):
             )
         )
 
-        if is_background:
-            # Clean trailing '&' if present to avoid syntax issues with shell launch
-            exec_target = cmd_str.rstrip("&").strip()
-            # Launch detached in a new session and redirect std streams so Python does not wait
+        if is_desktop_app:
+            # Wrap with 'uwsm app --' if on Hyprland/Wayland and not already prefixed
+            if not cmd_str.startswith("uwsm app --"):
+                cmd_str = f"uwsm app -- {cmd_str}"
+
+            # Launch detached in a new session and redirect std streams
             subprocess.Popen(
-                exec_target,
+                cmd_str,
                 shell=True,
                 start_new_session=True,
                 stdout=subprocess.DEVNULL,
                 stderr=subprocess.DEVNULL,
                 stdin=subprocess.DEVNULL,
             )
-            return f"Application or command launched in background: {exec_target}"
+            return f"Application launched in background: {cmd_str}"
 
+        # 3. Regular non-GUI command execution
         res = subprocess.run(
             command, shell=True, capture_output=True, text=True, timeout=10
         )
@@ -1076,6 +1104,7 @@ class AIGeneratorThread(QThread):
     history_save_signal = pyqtSignal()
 
     SAFE_COMMANDS = [
+        "uwsm",
         "ls",
         "cat",
         "echo",
@@ -1100,6 +1129,14 @@ class AIGeneratorThread(QThread):
         "find",
         "neofetch",
         "fastfetch",
+        "yazi",
+        "kitty",
+        "firefox",
+        "google-chrome",
+        "google-chrome-stable",
+        "nautilus",
+        "zed",
+        "zeditor",
     ]
 
     def __init__(self, messages):
@@ -1445,12 +1482,13 @@ class Backend(QObject):
 
     def _build_system_prompt(self):
         system_content = (
-            "You are Assistant, an agentic AI desktop assistant with direct system access. "
-            "You MUST use the provided JSON tool calls to interact with the system, files, and applications.\n"
+            "You are Assistant, an agentic AI desktop assistant with direct system access running on Hyprland.\n"
             "- CRITICAL RULE FOR FILES: When the user asks to create, write, modify, read, or replace content in a file, "
             "you MUST call `write_file`, `read_file`, `replace_in_file`, or `execute_command`. "
             "NEVER claim or pretend you created or edited a file in your response text without invoking the corresponding tool first.\n"
-            "- When opening GUI applications or web browsers, use `execute_command` (they will run in background).\n"
+            "- When opening desktop applications (e.g. firefox, nautilus, chrome), launch them using `execute_command('uwsm app -- <app>')`.\n"
+            "- When opening terminal/TUI applications (e.g. yazi, btop, lazygit), launch them inside a terminal: `execute_command('uwsm app -- kitty <command>')`.\n"
+            "- For Hyprland workspace and window actions, use `manage_desktop`.\n"
             "- Keep answers concise, natural, and conversational."
         )
         if USER_CONTEXT and not USER_CONTEXT.startswith("<!--"):
