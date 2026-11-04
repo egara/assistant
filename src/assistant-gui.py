@@ -371,6 +371,27 @@ tools = [
     {
         "type": "function",
         "function": {
+            "name": "open_application",
+            "description": "Open or launch any desktop application or terminal tool (e.g. yazi, chrome, firefox, nautilus, zed, btop). Terminal-based apps are automatically and safely launched inside a terminal, and all applications run seamlessly under uwsm. You can optionally provide a target path or URL to open.",
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "app": {
+                        "type": "string",
+                        "description": "Application name or executable (e.g. 'yazi', 'google-chrome', 'firefox', 'nautilus', 'zed', 'kitty').",
+                    },
+                    "target": {
+                        "type": "string",
+                        "description": "Optional file path, directory path, or URL to open with the application (e.g. '~/Downloads', '~/Documents/report.pdf', 'https://github.com').",
+                    },
+                },
+                "required": ["app"],
+            },
+        },
+    },
+    {
+        "type": "function",
+        "function": {
             "name": "execute_command",
             "description": "Execute a bash shell command. For GUI applications, open commands, or long-running processes, append '&' or invoke the command normally (they will run detached in background).",
             "parameters": {
@@ -656,6 +677,109 @@ def replace_in_file(path, target, replacement):
         return f"Success: Replaced {count} occurrence(s) of '{target}' in '{resolved}'."
     except Exception as e:
         return f"Error replacing text in '{path}': {e}"
+
+
+# Fast in-memory cache of desktop applications discovered from XDG_DATA_DIRS
+_DESKTOP_CACHE = None
+
+def _get_desktop_cache():
+    global _DESKTOP_CACHE
+    if _DESKTOP_CACHE is not None:
+        return _DESKTOP_CACHE
+
+    cache = {}
+    data_dirs = os.environ.get("XDG_DATA_DIRS", "").split(":")
+    # Add standard NixOS profile paths if not in XDG_DATA_DIRS
+    extra_dirs = [
+        os.path.expanduser("~/.nix-profile/share"),
+        f"/etc/profiles/per-user/{os.environ.get('USER', 'egarcia')}/share",
+        "/run/current-system/sw/share",
+    ]
+    for ed in extra_dirs:
+        if ed not in data_dirs:
+            data_dirs.append(ed)
+
+    for d in data_dirs:
+        apps_dir = os.path.join(d, "applications")
+        if not os.path.isdir(apps_dir):
+            continue
+        try:
+            for entry in os.listdir(apps_dir):
+                if entry.endswith(".desktop"):
+                    full_p = os.path.join(apps_dir, entry)
+                    base_name = entry[:-8].lower()
+                    try:
+                        with open(full_p, "r", encoding="utf-8", errors="ignore") as fp:
+                            content = fp.read()
+                            is_terminal = "Terminal=true" in content
+                            cache[base_name] = {"is_terminal": is_terminal, "path": full_p}
+                    except:
+                        pass
+        except:
+            pass
+
+    _DESKTOP_CACHE = cache
+    return _DESKTOP_CACHE
+
+
+def open_application(app, target=""):
+    """Universally launch any application with optional target (file, directory, URL)."""
+    try:
+        app_clean = (app or "").strip().lower()
+        if not app_clean:
+            return "Error: No application name provided."
+
+        # Map common aliases
+        aliases = {
+            "chrome": "google-chrome-stable",
+            "google-chrome": "google-chrome-stable",
+            "zed": "zeditor",
+            "code": "code",
+            "terminal": "kitty",
+            "files": "nautilus",
+        }
+        binary = aliases.get(app_clean, app_clean)
+
+        # Check if the app is a TUI app (via desktop entry Terminal=true or common list)
+        known_tui = {"yazi", "btop", "htop", "lazygit", "lazyssh", "herdr", "nvtop", "ranger", "neovim", "nvim"}
+        desktop_cache = _get_desktop_cache()
+
+        is_terminal_app = binary in known_tui
+        if not is_terminal_app:
+            # Check desktop entries
+            for name, meta in desktop_cache.items():
+                if binary == name or binary in name:
+                    if meta.get("is_terminal"):
+                        is_terminal_app = True
+                    break
+
+        # Resolve target argument (expand ~ and handle URLs)
+        target_arg = ""
+        if target and target.strip():
+            raw_target = target.strip()
+            if raw_target.startswith("http://") or raw_target.startswith("https://"):
+                target_arg = f"'{raw_target}'"
+            else:
+                expanded = os.path.expanduser(raw_target)
+                target_arg = f"'{expanded}'"
+
+        # Build final execution command
+        if is_terminal_app:
+            cmd = f"uwsm app -- kitty {binary} {target_arg}".strip()
+        else:
+            cmd = f"uwsm app -- {binary} {target_arg}".strip()
+
+        subprocess.Popen(
+            cmd,
+            shell=True,
+            start_new_session=True,
+            stdout=subprocess.DEVNULL,
+            stderr=subprocess.DEVNULL,
+            stdin=subprocess.DEVNULL,
+        )
+        return f"Application launched in background: {cmd}"
+    except Exception as e:
+        return f"Error launching application '{app}': {e}"
 
 
 def execute_command(command):
@@ -1290,7 +1414,11 @@ class AIGeneratorThread(QThread):
 
                     self.sys_message_signal.emit("sys", f"⚙️ Running {tool_name}...")
 
-                    if tool_name == "get_weather":
+                    if tool_name == "open_application":
+                        results = open_application(args.get("app", ""), args.get("target", ""))
+                        if not results.startswith("Application launched in background:"):
+                            all_tools_silent = False
+                    elif tool_name == "get_weather":
                         all_tools_silent = False
                         results = get_weather(args.get("location", ""))
                     elif tool_name == "web_search":
@@ -1492,9 +1620,8 @@ class Backend(QObject):
             "- CRITICAL RULE FOR FILES: When the user asks to create, write, modify, read, or replace content in a file, "
             "you MUST call `write_file`, `read_file`, `replace_in_file`, or `execute_command`. "
             "NEVER claim or pretend you created or edited a file in your response text without invoking the corresponding tool first.\n"
-            "- When opening desktop applications (e.g. firefox, nautilus, chrome), launch them using `execute_command('uwsm app -- <app>')`.\n"
-            "- When opening terminal/TUI applications (e.g. yazi, btop, lazygit), launch them inside a terminal: `execute_command('uwsm app -- kitty <command>')`.\n"
-            "  * Note for Yazi: Yazi takes the target directory directly as a positional argument (e.g. `uwsm app -- kitty yazi ~/Downloads`). NEVER pass `-d` to yazi as it will crash.\n"
+            "- CRITICAL RULE FOR APPLICATIONS: When the user asks to open or launch an application or file (e.g. 'abre yazi en Downloads', 'abre chrome', 'abre zed en mi proyecto'), "
+            "you MUST call `open_application(app='...', target='...')`. Do NOT use execute_command for launching applications.\n"
             "- For Hyprland workspace and window actions, use `manage_desktop`.\n"
             "- Keep answers concise, natural, and conversational."
         )
