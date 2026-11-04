@@ -1235,6 +1235,8 @@ class AIGeneratorThread(QThread):
                 if full_content.strip():
                     temp_messages.append({"role": "assistant", "content": full_content})
                 tool_results_text = ""
+                all_tools_silent = True
+
                 for tool_call in tool_calls:
                     if self._is_stopped:
                         break
@@ -1248,10 +1250,13 @@ class AIGeneratorThread(QThread):
                     self.sys_message_signal.emit("sys", f"⚙️ Running {tool_name}...")
 
                     if tool_name == "get_weather":
+                        all_tools_silent = False
                         results = get_weather(args.get("location", ""))
                     elif tool_name == "web_search":
+                        all_tools_silent = False
                         results = perform_web_search(args.get("query", ""))
                     elif tool_name == "read_file":
+                        all_tools_silent = False
                         results = read_file(args.get("path", ""))
                     elif tool_name == "write_file":
                         results = write_file(args.get("path", ""), args.get("content", ""))
@@ -1262,8 +1267,10 @@ class AIGeneratorThread(QThread):
                             args.get("replacement", ""),
                         )
                     elif tool_name == "obsidian_search":
+                        all_tools_silent = False
                         results = search_obsidian(args.get("query", ""))
                     elif tool_name == "obsidian_read":
+                        all_tools_silent = False
                         results = read_obsidian(args.get("filename", ""))
                     elif tool_name == "obsidian_write":
                         results = write_obsidian(
@@ -1275,16 +1282,32 @@ class AIGeneratorThread(QThread):
                             args.get("target", ""),
                             args.get("window_address", ""),
                         )
+                        # If manage_desktop failed, do not silence so the user gets notified
+                        if not results.startswith("Success"):
+                            all_tools_silent = False
                     elif tool_name == "execute_command":
-                        results = self.execute_command_safe(args.get("command", ""))
+                        cmd = args.get("command", "")
+                        results = self.execute_command_safe(cmd)
+                        # Only silence if it is a silent desktop/hyprland command that succeeded
+                        if not (cmd.strip().startswith("hyprctl") and "error" not in results.lower()):
+                            all_tools_silent = False
                     elif tool_name in mcp_manager.tools:
+                        all_tools_silent = False
                         results = mcp_manager.call_tool(tool_name, args)
                     else:
+                        all_tools_silent = False
                         results = "Done."
 
                     tool_results_text += f"\n--- {tool_name} ---\n{results}\n"
 
                 if self._is_stopped:
+                    self.finished_signal.emit("")
+                    return
+
+                # If all executed actions were silent desktop operations that succeeded, finish immediately!
+                if all_tools_silent:
+                    self.status_signal.emit("Idle", "#6c7086")
+                    self.history_save_signal.emit()
                     self.finished_signal.emit("")
                     return
 
