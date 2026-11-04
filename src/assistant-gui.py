@@ -88,9 +88,28 @@ LLM_BASE_URL = config.get("llm", {}).get("base_url", "http://127.0.0.1:8080/v1")
 LLM_MODEL = config.get("llm", {}).get("model", "Hermes-3-8B")
 VISION_ENABLED = config.get("llm", {}).get("vision_enabled", True)
 
+# Fallback LLM configuration
+FALLBACK_CONF = config.get("llm", {}).get("fallback")
+if FALLBACK_CONF:
+    FALLBACK_CLIENT = OpenAI(
+        base_url=FALLBACK_CONF.get("base_url", "http://127.0.0.1:8010/v1"),
+        api_key=FALLBACK_CONF.get("api_key", "sk-none"),
+        timeout=FALLBACK_CONF.get("timeout", 15.0),
+    )
+    FALLBACK_MODEL = FALLBACK_CONF.get("model", "GLM-5.3-Flash")
+    FALLBACK_VISION_ENABLED = FALLBACK_CONF.get("vision_enabled", True)
+else:
+    FALLBACK_CLIENT = None
+    FALLBACK_MODEL = None
+    FALLBACK_VISION_ENABLED = True
+
 VOICE_CONF = config.get("voice", {})
 MCP_SERVERS_CONF = config.get("mcp_servers", {})
-client = OpenAI(base_url=LLM_BASE_URL, api_key=LLM_API_KEY)
+client = OpenAI(
+    base_url=LLM_BASE_URL,
+    api_key=LLM_API_KEY,
+    timeout=config.get("llm", {}).get("timeout", 15.0),
+)
 
 CONTEXT_PATH = os.path.expanduser(
     config.get("llm", {}).get("system_context", "~/.config/assistant/context.md")
@@ -835,8 +854,12 @@ class AIGeneratorThread(QThread):
                             has_image = True
                             break
 
+            # Select active client and model (primary with fallback support)
+            active_client = client
+            active_model = LLM_MODEL
+
             api_kwargs = {
-                "model": LLM_MODEL,
+                "model": active_model,
                 "messages": temp_messages,
                 "temperature": 0.0,
                 "stream": True,
@@ -846,7 +869,20 @@ class AIGeneratorThread(QThread):
             if not has_image:
                 api_kwargs["tools"] = tools
 
-            response = client.chat.completions.create(**api_kwargs)
+            try:
+                response = active_client.chat.completions.create(**api_kwargs)
+            except (openai.APIConnectionError, openai.APIStatusError) as primary_err:
+                if FALLBACK_CLIENT:
+                    self.sys_message_signal.emit(
+                        "sys",
+                        f"⚠️ Primary model unavailable ({active_model}). Switching to fallback: {FALLBACK_MODEL}...",
+                    )
+                    active_client = FALLBACK_CLIENT
+                    active_model = FALLBACK_MODEL
+                    api_kwargs["model"] = active_model
+                    response = active_client.chat.completions.create(**api_kwargs)
+                else:
+                    raise primary_err
             tool_calls, full_content = [], ""
             bubble_created = False
 
@@ -978,13 +1014,26 @@ class AIGeneratorThread(QThread):
 
                 # Turn 2 API Call (Processing Tool Results)
                 api_kwargs_t2 = {
-                    "model": LLM_MODEL,
+                    "model": active_model,
                     "messages": temp_messages,
                     "temperature": 0.0,
                     "stream": True,
                 }
 
-                stream_response = client.chat.completions.create(**api_kwargs_t2)
+                try:
+                    stream_response = active_client.chat.completions.create(**api_kwargs_t2)
+                except (openai.APIConnectionError, openai.APIStatusError) as t2_err:
+                    if active_client != FALLBACK_CLIENT and FALLBACK_CLIENT:
+                        self.sys_message_signal.emit(
+                            "sys",
+                            f"⚠️ Primary model unavailable ({active_model}). Switching to fallback: {FALLBACK_MODEL}...",
+                        )
+                        active_client = FALLBACK_CLIENT
+                        active_model = FALLBACK_MODEL
+                        api_kwargs_t2["model"] = active_model
+                        stream_response = active_client.chat.completions.create(**api_kwargs_t2)
+                    else:
+                        raise t2_err
 
                 buffer = ""
                 last_emit = time.time()

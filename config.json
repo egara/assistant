@@ -5,7 +5,14 @@
     "base_url": "http://127.0.0.1:8080/v1",
     "model": "Hermes-3-8B",
     "vision_enabled": true,
-    "system_context": "~/.config/assistant/context.md"
+    "system_context": "~/.config/assistant/context.md",
+    "fallback": {
+      "provider_name": "local",
+      "api_key": "sk-none",
+      "base_url": "http://127.0.0.1:8010/v1",
+      "model": "GLM-5.3-Flash",
+      "vision_enabled": true
+    }
   },
   "obsidian": {
     "api_key": "PASTE_YOUR_API_KEY_HERE",
