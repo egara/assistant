@@ -1325,8 +1325,10 @@ class AIGeneratorThread(QThread):
                     elif tool_name == "execute_command":
                         cmd = args.get("command", "")
                         results = self.execute_command_safe(cmd)
-                        # Only silence if it is a silent desktop/hyprland command that succeeded
-                        if not (cmd.strip().startswith("hyprctl") and "error" not in results.lower()):
+                        # Silence if it launched an application in the background or is a successful hyprctl command
+                        is_app_launch = results.startswith("Application launched in background:")
+                        is_hyprctl_success = cmd.strip().startswith("hyprctl") and "error" not in results.lower()
+                        if not (is_app_launch or is_hyprctl_success):
                             all_tools_silent = False
                     elif tool_name in mcp_manager.tools:
                         all_tools_silent = False
