@@ -89,6 +89,7 @@ ApplicationWindow {
             id: chatListView
             Layout.fillWidth: true
             Layout.fillHeight: true
+            Layout.bottomMargin: 10
             model: chatModel
             spacing: 15
             clip: true
