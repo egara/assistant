@@ -699,6 +699,10 @@ def execute_command(command):
         ]
 
         # 1. Check if it's a TUI app that needs to be launched inside Kitty
+        # Also clean invalid flags invented by LLMs (e.g. yazi does not have '-d', it takes paths positionally)
+        if "yazi -d " in cmd_str:
+            cmd_str = cmd_str.replace("yazi -d ", "yazi ")
+
         is_tui = any(
             cmd_str == app or cmd_str.startswith(f"{app} ")
             for app in tui_apps
@@ -1490,6 +1494,7 @@ class Backend(QObject):
             "NEVER claim or pretend you created or edited a file in your response text without invoking the corresponding tool first.\n"
             "- When opening desktop applications (e.g. firefox, nautilus, chrome), launch them using `execute_command('uwsm app -- <app>')`.\n"
             "- When opening terminal/TUI applications (e.g. yazi, btop, lazygit), launch them inside a terminal: `execute_command('uwsm app -- kitty <command>')`.\n"
+            "  * Note for Yazi: Yazi takes the target directory directly as a positional argument (e.g. `uwsm app -- kitty yazi ~/Downloads`). NEVER pass `-d` to yazi as it will crash.\n"
             "- For Hyprland workspace and window actions, use `manage_desktop`.\n"
             "- Keep answers concise, natural, and conversational."
         )
