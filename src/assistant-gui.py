@@ -1308,7 +1308,6 @@ class AIGeneratorThread(QThread):
             # Select active client and model (primary with fallback support)
             active_client = client
             active_model = LLM_MODEL
-            self.active_model_signal.emit(active_model)
 
             api_kwargs = {
                 "model": active_model,
@@ -1323,6 +1322,7 @@ class AIGeneratorThread(QThread):
 
             try:
                 response = active_client.chat.completions.create(**api_kwargs)
+                self.active_model_signal.emit(active_model)
             except (openai.APIConnectionError, openai.APIStatusError) as primary_err:
                 if FALLBACK_CLIENT:
                     active_client = FALLBACK_CLIENT
