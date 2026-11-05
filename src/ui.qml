@@ -11,6 +11,7 @@ ApplicationWindow {
     color: "#0b0f19"
 
     property int activeAiIndex: -1
+    property bool userScrolledUp: false
     readonly property int systemFontSize: window.font.pixelSize > 0 ? window.font.pixelSize : (window.font.pointSize > 0 ? Math.round(window.font.pointSize * 1.33) : 14)
 
     Component.onCompleted: {
@@ -27,6 +28,7 @@ ApplicationWindow {
             statusLabel.color = colorHex;
         }
         function onMessageAdded(role, msgText) {
+            userScrolledUp = false;
             chatModel.append({
                 "role": role,
                 "msgText": msgText
@@ -42,17 +44,24 @@ ApplicationWindow {
             if (activeAiIndex >= 0 && activeAiIndex < chatModel.count) {
                 var item = chatModel.get(activeAiIndex);
                 chatModel.setProperty(activeAiIndex, "msgText", item.msgText + newText);
-                chatListView.positionViewAtEnd();
+                if (!userScrolledUp) {
+                    chatListView.positionViewAtEnd();
+                }
             }
         }
         function onInputStateChanged(enabled) {
             inputBox.enabled = enabled;
+            if (enabled) {
+                // Response generation finished, allow free scrolling
+                userScrolledUp = false;
+            }
         }
         function onStopButtonStateChanged(visible) {
             stopButton.visible = visible;
         }
 
         function onRequireApproval(command) {
+            userScrolledUp = false;
             chatModel.append({
                 "role": "approval",
                 "msgText": command
@@ -67,6 +76,7 @@ ApplicationWindow {
         function onChatCleared() {
             chatModel.clear();
             activeAiIndex = -1;
+            userScrolledUp = false;
         }
     }
 
@@ -102,8 +112,8 @@ ApplicationWindow {
                 height: 20
             }
 
-            onContentHeightChanged: {
-                chatListView.positionViewAtEnd();
+            onMovementStarted: {
+                userScrolledUp = true;
             }
 
             ScrollBar.vertical: ScrollBar {
