@@ -12,6 +12,7 @@ ApplicationWindow {
 
     property int activeAiIndex: -1
     property bool userScrolledUp: false
+    property bool isVoiceActive: false
     readonly property int systemFontSize: window.font.pixelSize > 0 ? window.font.pixelSize : (window.font.pointSize > 0 ? Math.round(window.font.pointSize * 1.33) : 14)
 
     Component.onCompleted: {
@@ -22,6 +23,9 @@ ApplicationWindow {
         target: backend
         function onActiveModelChanged(modelName) {
             modelLabel.text = modelName;
+        }
+        function onVoiceStateChanged(active) {
+            isVoiceActive = active;
         }
         function onStatusChanged(text, colorHex) {
             statusLabel.text = text;
@@ -274,7 +278,7 @@ ApplicationWindow {
 
                 TextArea {
                     id: inputBox
-                    placeholderText: "Type a message, or press 'v' to use voice..."
+                    placeholderText: "Escribe un mensaje o pulsa el micro..."
                     color: "#cdd6f4"
                     font.family: window.font.family
                     font.pixelSize: window.systemFontSize
@@ -286,7 +290,7 @@ ApplicationWindow {
                             var txt = text.trim();
                             if (txt !== "") {
                                 if (txt.toLowerCase() === "v")
-                                    backend.startVoiceRecording();
+                                    backend.toggleVoiceRecording();
                                 else
                                     backend.processInput(txt);
                                 text = "";
@@ -295,6 +299,28 @@ ApplicationWindow {
                         }
                     }
                 }
+            }
+
+            Button {
+                id: micButton
+                text: "🎙️"
+                Layout.preferredWidth: 60
+                Layout.preferredHeight: 60
+                ToolTip.visible: hovered
+                ToolTip.text: isVoiceActive ? "Detener grabación de voz" : "Activar modo de voz (o pulsa 'v')"
+                background: Rectangle {
+                    color: isVoiceActive ? "#a6e3a1" : (parent.down ? "#89b4fa" : (parent.hovered ? "#45475a" : "#1e1e2e"))
+                    radius: 16
+                    border.color: isVoiceActive ? "#a6e3a1" : (parent.hovered ? "#89b4fa" : "#313244")
+                    border.width: 1
+                }
+                contentItem: Text {
+                    text: parent.text
+                    font.pixelSize: 22
+                    horizontalAlignment: Text.AlignHCenter
+                    verticalAlignment: Text.AlignVCenter
+                }
+                onClicked: backend.toggleVoiceRecording()
             }
 
             Button {

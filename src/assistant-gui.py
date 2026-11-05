@@ -1589,6 +1589,7 @@ class Backend(QObject):
     chatCleared = pyqtSignal()
     inputStateChanged = pyqtSignal(bool)
     stopButtonStateChanged = pyqtSignal(bool)
+    voiceStateChanged = pyqtSignal(bool)
     requireApproval = pyqtSignal(str)
     clearApproval = pyqtSignal()
 
@@ -1615,6 +1616,7 @@ class Backend(QObject):
 
     def emit_initial_state(self):
         self.activeModelChanged.emit(LLM_MODEL)
+        self.voiceStateChanged.emit(self.is_recording or self.is_voice_mode)
         if self.is_voice_mode:
             self.statusChanged.emit("🎙️ Voice Mode Active", "#a6e3a1")
         for msg in self.messages:
@@ -1682,7 +1684,7 @@ class Backend(QObject):
             "- **/new** o **/reset**: Inicia una nueva sesión desde cero, eliminando el contexto y limpiando el chat.\n"
             "- **/clear**: Limpia los mensajes en pantalla y vacía la memoria de la conversación.\n"
             "- **/help**: Muestra esta información de ayuda.\n"
-            "- **'v'**: Escribe 'v' y pulsa Enter para activar el modo de voz instantáneamente."
+            "- **🎙️ Botón o tecla 'v'**: Pulsa el botón de micrófono o escribe 'v' y pulsa Enter para activar/desactivar el modo de voz."
         )
         self.messageAdded.emit("sys", help_text)
 
@@ -1720,6 +1722,7 @@ class Backend(QObject):
         self.inputStateChanged.emit(True)
         self.stopButtonStateChanged.emit(False)
         self.is_voice_mode = False
+        self.voiceStateChanged.emit(False)
         self._input_enabled = True
 
     def check_signals(self):
@@ -1768,6 +1771,13 @@ class Backend(QObject):
             self.ai_thread.approval_event.set()
 
     @pyqtSlot()
+    def toggleVoiceRecording(self):
+        if self.is_recording or self.is_voice_mode:
+            self.interrupt_ai()
+        else:
+            self.startVoiceRecording()
+
+    @pyqtSlot()
     def startVoiceRecording(self):
         self.interrupt_ai()
         if self.is_recording:
@@ -1777,6 +1787,7 @@ class Backend(QObject):
         self._input_enabled = False
         self.inputStateChanged.emit(False)
         self.stopButtonStateChanged.emit(True)
+        self.voiceStateChanged.emit(True)
         self.statusChanged.emit("🎙️ Listening... (Say 'Stop' to end)", "#a6e3a1")
         subprocess.run(
             ["pw-play", os.path.join(SOUND_DIR, "start.wav")], stderr=subprocess.DEVNULL
@@ -1880,6 +1891,7 @@ class Backend(QObject):
                 self.statusChanged.emit("Idle", "#6c7086")
                 self.messageAdded.emit("sys", "🛑 Conversation Ended.")
                 self.is_voice_mode = False
+                self.voiceStateChanged.emit(False)
                 self._input_enabled = True
                 self.inputStateChanged.emit(True)
                 self.stopButtonStateChanged.emit(False)
@@ -1889,6 +1901,7 @@ class Backend(QObject):
             self.statusChanged.emit("Idle", "#6c7086")
             self.messageAdded.emit("sys", "No speech detected.")
             self.is_voice_mode = False
+            self.voiceStateChanged.emit(False)
             self._input_enabled = True
             self.inputStateChanged.emit(True)
             self.stopButtonStateChanged.emit(False)
