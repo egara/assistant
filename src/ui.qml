@@ -101,6 +101,11 @@ ApplicationWindow {
                 width: chatListView.width
                 height: 20
             }
+
+            onContentHeightChanged: {
+                chatListView.positionViewAtEnd();
+            }
+
             ScrollBar.vertical: ScrollBar {
                 policy: ScrollBar.AsNeeded
                 contentItem: Rectangle {
