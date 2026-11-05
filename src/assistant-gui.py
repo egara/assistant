@@ -1800,6 +1800,8 @@ class Backend(QObject):
             self.rec_process.terminate()
 
     def record_with_silence(self):
+        silence_duration = str(VOICE_CONF.get("silence_duration", "0.8"))
+        silence_threshold = str(VOICE_CONF.get("silence_threshold", "1%"))
         self.rec_process = subprocess.Popen(
             [
                 "rec",
@@ -1816,10 +1818,10 @@ class Backend(QObject):
                 "silence",
                 "1",
                 "0.1",
-                "1%",
+                silence_threshold,
                 "1",
-                "1.5",
-                "1%",
+                silence_duration,
+                silence_threshold,
             ]
         )
         self.rec_process.wait()
