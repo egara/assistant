@@ -19,6 +19,9 @@ ApplicationWindow {
 
     Connections {
         target: backend
+        function onActiveModelChanged(modelName) {
+            modelLabel.text = modelName;
+        }
         function onStatusChanged(text, colorHex) {
             statusLabel.text = text;
             statusLabel.color = colorHex;
@@ -298,6 +301,16 @@ ApplicationWindow {
                 }
                 onClicked: backend.stopAIOperation()
             }
+        }
+
+        Label {
+            id: modelLabel
+            text: ""
+            color: "#585b70"
+            font.pixelSize: 11
+            font.bold: false
+            visible: text !== ""
+            Layout.alignment: Qt.AlignHCenter
         }
     }
 }

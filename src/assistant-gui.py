@@ -1224,6 +1224,7 @@ class TTSWorkerThread(QThread):
 
 class AIGeneratorThread(QThread):
     status_signal = pyqtSignal(str, str)
+    active_model_signal = pyqtSignal(str)
     new_bubble_signal = pyqtSignal(str, str)
     append_text_signal = pyqtSignal(str)
     sys_message_signal = pyqtSignal(str, str)
@@ -1307,6 +1308,7 @@ class AIGeneratorThread(QThread):
             # Select active client and model (primary with fallback support)
             active_client = client
             active_model = LLM_MODEL
+            self.active_model_signal.emit(active_model)
 
             api_kwargs = {
                 "model": active_model,
@@ -1323,12 +1325,9 @@ class AIGeneratorThread(QThread):
                 response = active_client.chat.completions.create(**api_kwargs)
             except (openai.APIConnectionError, openai.APIStatusError) as primary_err:
                 if FALLBACK_CLIENT:
-                    self.sys_message_signal.emit(
-                        "sys",
-                        f"⚠️ Primary model unavailable ({active_model}). Switching to fallback: {FALLBACK_MODEL}...",
-                    )
                     active_client = FALLBACK_CLIENT
                     active_model = FALLBACK_MODEL
+                    self.active_model_signal.emit(active_model)
                     api_kwargs["model"] = active_model
                     response = active_client.chat.completions.create(**api_kwargs)
                 else:
@@ -1516,12 +1515,9 @@ class AIGeneratorThread(QThread):
                     stream_response = active_client.chat.completions.create(**api_kwargs_t2)
                 except (openai.APIConnectionError, openai.APIStatusError) as t2_err:
                     if active_client != FALLBACK_CLIENT and FALLBACK_CLIENT:
-                        self.sys_message_signal.emit(
-                            "sys",
-                            f"⚠️ Primary model unavailable ({active_model}). Switching to fallback: {FALLBACK_MODEL}...",
-                        )
                         active_client = FALLBACK_CLIENT
                         active_model = FALLBACK_MODEL
+                        self.active_model_signal.emit(active_model)
                         api_kwargs_t2["model"] = active_model
                         stream_response = active_client.chat.completions.create(**api_kwargs_t2)
                     else:
@@ -1587,6 +1583,7 @@ class AIGeneratorThread(QThread):
 ## BACKEND CONTROLLER (Bridged to QML)
 class Backend(QObject):
     statusChanged = pyqtSignal(str, str)
+    activeModelChanged = pyqtSignal(str)
     messageAdded = pyqtSignal(str, str)
     messageAppended = pyqtSignal(str)
     chatCleared = pyqtSignal()
@@ -1617,6 +1614,7 @@ class Backend(QObject):
         self.messageAppended.emit(text)
 
     def emit_initial_state(self):
+        self.activeModelChanged.emit(LLM_MODEL)
         if self.is_voice_mode:
             self.statusChanged.emit("🎙️ Voice Mode Active", "#a6e3a1")
         for msg in self.messages:
@@ -1912,6 +1910,7 @@ class Backend(QObject):
 
         self.ai_thread = AIGeneratorThread(self.messages)
         self.ai_thread.status_signal.connect(self.statusChanged.emit)
+        self.ai_thread.active_model_signal.connect(self.activeModelChanged.emit)
         self.ai_thread.new_bubble_signal.connect(
             self.handle_message_added, Qt.ConnectionType.QueuedConnection
         )
