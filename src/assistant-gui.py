@@ -1158,7 +1158,7 @@ class TTSWorkerThread(QThread):
             return
 
         if engine_type == "online":
-            self.status_signal.emit("🔊 Speaking...", "#89b4fa")
+            self.status_signal.emit("󰓃 Speaking...", "#59c2ff")
             voice = VOICE_CONF.get("tts_online_voices", {}).get(
                 detected_lang, "en-US-GuyNeural"
             )
@@ -1188,7 +1188,7 @@ class TTSWorkerThread(QThread):
             )
 
             if os.path.exists(model):
-                self.status_signal.emit("🔊 Speaking...", "#89b4fa")
+                self.status_signal.emit("󰓃 Speaking...", "#59c2ff")
                 self.current_process = subprocess.Popen(
                     ["piper", "--model", model, "--output_file", audio_path],
                     stdin=subprocess.PIPE,
@@ -1196,7 +1196,7 @@ class TTSWorkerThread(QThread):
                 )
                 self.current_process.communicate(input=self.text.encode("utf-8"))
             else:
-                self.status_signal.emit("⚠️ Missing Voice Model", "#f38ba8")
+                self.status_signal.emit("󰀦 Missing Voice Model", "#f07178")
                 print(
                     f"[!] Error: Model {model} not found. Please verify your Nix Flake or install.sh downloaded it."
                 )
@@ -1411,7 +1411,7 @@ class AIGeneratorThread(QThread):
                     except:
                         args = {}
 
-                    self.sys_message_signal.emit("sys", f"⚙️ Running {tool_name}...")
+                    self.sys_message_signal.emit("sys", f"󰑮 Running {tool_name}...")
 
                     if tool_name == "open_application":
                         results = open_application(args.get("app", ""), args.get("target", ""))
@@ -1485,7 +1485,7 @@ class AIGeneratorThread(QThread):
                             "is_silent": True,
                         }
                     )
-                    self.status_signal.emit("Idle", "#6c7086")
+                    self.status_signal.emit("Idle", "#828c99")
                     self.history_save_signal.emit()
                     self.finished_signal.emit("")
                     return
@@ -1568,7 +1568,7 @@ class AIGeneratorThread(QThread):
 
         except openai.APIConnectionError:
             self.sys_message_signal.emit(
-                "sys", "⚠️ Error: The Local LLM Server is offline."
+                "sys", "󰀦 Error: The Local LLM Server is offline."
             )
             self.finished_signal.emit("The local model server is offline.")
         except Exception as e:
@@ -1614,7 +1614,7 @@ class Backend(QObject):
         self.activeModelChanged.emit(LLM_MODEL)
         self.voiceStateChanged.emit(self.is_recording or self.is_voice_mode)
         if self.is_voice_mode:
-            self.statusChanged.emit("🎙️ Voice Mode Active", "#a6e3a1")
+            self.statusChanged.emit("󰍬 Voice Mode Active", "#7fd962")
         for msg in self.messages:
             if msg["role"] != "system" and not msg.get("is_silent"):
                 role_str = "ai" if msg["role"] == "assistant" else "user"
@@ -1676,11 +1676,11 @@ class Backend(QObject):
     def show_help(self):
         """Display available slash commands and shortcuts."""
         help_text = (
-            "💡 **Comandos disponibles:**\n\n"
+            "󰋖 **Comandos disponibles:**\n\n"
             "- **/new** o **/reset**: Inicia una nueva sesión desde cero, eliminando el contexto y limpiando el chat.\n"
             "- **/clear**: Limpia los mensajes en pantalla y vacía la memoria de la conversación.\n"
             "- **/help**: Muestra esta información de ayuda.\n"
-            "- **🎙️ Botón o tecla 'v'**: Pulsa el botón de micrófono o escribe 'v' y pulsa Enter para activar/desactivar el modo de voz."
+            "- **󰍬 Botón o tecla 'v'**: Pulsa el botón de micrófono o escribe 'v' y pulsa Enter para activar/desactivar el modo de voz."
         )
         self.messageAdded.emit("sys", help_text)
 
@@ -1714,7 +1714,7 @@ class Backend(QObject):
         subprocess.run(["pkill", "-x", "rec"], stderr=subprocess.DEVNULL)
         subprocess.run(["pkill", "-x", "whisper-cli"], stderr=subprocess.DEVNULL)
 
-        self.statusChanged.emit("Idle", "#6c7086")
+        self.statusChanged.emit("Idle", "#828c99")
         self.inputStateChanged.emit(True)
         self.stopButtonStateChanged.emit(False)
         self.is_voice_mode = False
@@ -1752,7 +1752,7 @@ class Backend(QObject):
 
         self.interrupt_ai()
         self.is_voice_mode = False
-        self.statusChanged.emit("Idle", "#6c7086")
+        self.statusChanged.emit("Idle", "#828c99")
         self.submit_query(text)
 
     @pyqtSlot()
@@ -1784,7 +1784,7 @@ class Backend(QObject):
         self.inputStateChanged.emit(False)
         self.stopButtonStateChanged.emit(True)
         self.voiceStateChanged.emit(True)
-        self.statusChanged.emit("🎙️ Listening... (Say 'Stop' to end)", "#a6e3a1")
+        self.statusChanged.emit("󰍬 Listening... (Say 'Stop' to end)", "#7fd962")
         subprocess.run(
             ["pw-play", os.path.join(SOUND_DIR, "start.wav")], stderr=subprocess.DEVNULL
         )
@@ -1828,7 +1828,7 @@ class Backend(QObject):
             self.transcribe_audio()
 
     def transcribe_audio(self):
-        self.statusChanged.emit("⚙️ Transcribing...", "#f9e2af")
+        self.statusChanged.emit("󰑮 Transcribing...", "#e5b454")
         whisper_model = os.path.expanduser(
             VOICE_CONF.get("whisper_model")
             or "~/.local/share/assistant/models/ggml-small.bin"
@@ -1884,8 +1884,8 @@ class Backend(QObject):
                 any(p in clean_trans for p in stop_phrases)
                 and len(clean_trans.split()) <= 4
             ):
-                self.statusChanged.emit("Idle", "#6c7086")
-                self.messageAdded.emit("sys", "🛑 Conversation Ended.")
+                self.statusChanged.emit("Idle", "#828c99")
+                self.messageAdded.emit("sys", "󰓛 Conversation Ended.")
                 self.is_voice_mode = False
                 self.voiceStateChanged.emit(False)
                 self._input_enabled = True
@@ -1894,7 +1894,7 @@ class Backend(QObject):
                 return
             self.submit_query(transcript)
         else:
-            self.statusChanged.emit("Idle", "#6c7086")
+            self.statusChanged.emit("Idle", "#828c99")
             self.messageAdded.emit("sys", "No speech detected.")
             self.is_voice_mode = False
             self.voiceStateChanged.emit(False)
@@ -1906,7 +1906,7 @@ class Backend(QObject):
         self._input_enabled = False
         self.inputStateChanged.emit(False)
         self.stopButtonStateChanged.emit(True)
-        self.statusChanged.emit("🧠 Thinking...", "#cba6f7")
+        self.statusChanged.emit("󰟷 Thinking...", "#b48ead")
         self.messageAdded.emit("user", query)
 
         content = process_prompt(query)
@@ -1938,7 +1938,7 @@ class Backend(QObject):
         if full_response.strip():
             self.play_audio(full_response)
         else:
-            self.statusChanged.emit("Idle", "#6c7086")
+            self.statusChanged.emit("Idle", "#828c99")
             self._input_enabled = True
             self.inputStateChanged.emit(True)
             self.stopButtonStateChanged.emit(False)
@@ -1971,7 +1971,7 @@ class Backend(QObject):
         if self.is_voice_mode:
             self.startVoiceRecording()
         else:
-            self.statusChanged.emit("Idle", "#6c7086")
+            self.statusChanged.emit("Idle", "#828c99")
             self._input_enabled = True
             self.inputStateChanged.emit(True)
             self.stopButtonStateChanged.emit(False)
