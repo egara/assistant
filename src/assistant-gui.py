@@ -1476,16 +1476,12 @@ class AIGeneratorThread(QThread):
 
                 # If all executed actions were silent desktop operations that succeeded, finish immediately!
                 if all_tools_silent:
-                    # Append an assistant record to conversation memory so the LLM knows this request was resolved
-                    # without leaving dangling consecutive user messages in the history context.
-                    executed_desc = ", ".join(
-                        f"{tc['function']['name']}({tc['function'].get('arguments', '')})"
-                        for tc in tool_calls
-                    )
+                    # Append a concise, natural confirmation to conversation memory so the LLM knows this request
+                    # was resolved without mimicking pseudo-code or leaving consecutive user turns.
                     self.messages.append(
                         {
                             "role": "assistant",
-                            "content": f"[Action executed silently: {executed_desc}]",
+                            "content": "Hecho.",
                             "is_silent": True,
                         }
                     )
