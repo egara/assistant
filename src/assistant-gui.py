@@ -1485,7 +1485,6 @@ class AIGeneratorThread(QThread):
                             "is_silent": True,
                         }
                     )
-                    self.status_signal.emit("Idle", "#828c99")
                     self.history_save_signal.emit()
                     self.finished_signal.emit("")
                     return
@@ -1691,15 +1690,23 @@ class Backend(QObject):
         with open(HISTORY_FILE, "w") as f:
             json.dump(history_to_save, f)
 
+    def stop_media_playback(self):
+        """Stop any active audio output or TTS generation without resetting voice mode."""
+        if hasattr(self, "tts_thread") and self.tts_thread is not None:
+            if self.tts_thread.isRunning():
+                self.tts_thread.stop()
+
+        subprocess.run(["pkill", "-x", "pw-play"], stderr=subprocess.DEVNULL)
+        subprocess.run(["pkill", "-x", "piper"], stderr=subprocess.DEVNULL)
+        subprocess.run(["pkill", "-x", "edge-tts"], stderr=subprocess.DEVNULL)
+
     @pyqtSlot()
     def interrupt_ai(self):
         if hasattr(self, "ai_thread") and self.ai_thread is not None:
             if self.ai_thread.isRunning():
                 self.ai_thread.stop()
 
-        if hasattr(self, "tts_thread") and self.tts_thread is not None:
-            if self.tts_thread.isRunning():
-                self.tts_thread.stop()
+        self.stop_media_playback()
 
         self.is_recording = False
         if self.rec_process:
@@ -1708,9 +1715,6 @@ class Backend(QObject):
             except:
                 pass
 
-        subprocess.run(["pkill", "-x", "pw-play"], stderr=subprocess.DEVNULL)
-        subprocess.run(["pkill", "-x", "piper"], stderr=subprocess.DEVNULL)
-        subprocess.run(["pkill", "-x", "edge-tts"], stderr=subprocess.DEVNULL)
         subprocess.run(["pkill", "-x", "rec"], stderr=subprocess.DEVNULL)
         subprocess.run(["pkill", "-x", "whisper-cli"], stderr=subprocess.DEVNULL)
 
@@ -1775,7 +1779,7 @@ class Backend(QObject):
 
     @pyqtSlot()
     def startVoiceRecording(self):
-        self.interrupt_ai()
+        self.stop_media_playback()
         if self.is_recording:
             return
         self.is_recording = True
@@ -1937,6 +1941,9 @@ class Backend(QObject):
     def on_ai_finished(self, full_response):
         if full_response.strip():
             self.play_audio(full_response)
+        elif self.is_voice_mode:
+            # If in voice mode and the tool executed silently without spoken output, resume listening
+            self.startVoiceRecording()
         else:
             self.statusChanged.emit("Idle", "#828c99")
             self._input_enabled = True
