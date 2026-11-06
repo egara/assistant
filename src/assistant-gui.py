@@ -1921,7 +1921,7 @@ class Backend(QObject):
         self._input_enabled = False
         self.inputStateChanged.emit(False)
         self.stopButtonStateChanged.emit(True)
-        self.statusChanged.emit("󰟷 Thinking...", "#b48ead")
+        self.statusChanged.emit("󰟷 Thinking...", "#59c2ff")
         self.messageAdded.emit("user", query)
 
         content = process_prompt(query)
@@ -2021,6 +2021,7 @@ class TrayManager(QObject):
 
         self.icon_idle = create_tray_icon("#828c99")
         self.icon_listening = create_tray_icon("#7fd962")
+        self.icon_thinking = create_tray_icon("#59c2ff")
 
         self.tray = QSystemTrayIcon(self.icon_idle, self.app)
         self.tray.setToolTip("Assistant AI")
@@ -2043,8 +2044,9 @@ class TrayManager(QObject):
         self.tray.setContextMenu(self.menu)
         self.tray.activated.connect(self.on_tray_activated)
 
-        # Hook voice state changes to update icon and menu context
+        # Hook voice and status state changes to update icon and menu context
         self.backend.voiceStateChanged.connect(self.on_voice_state_changed)
+        self.backend.statusChanged.connect(self.on_status_changed)
 
         self.tray.show()
 
@@ -2069,8 +2071,22 @@ class TrayManager(QObject):
             self.action_talk.setText("Stop talking")
             self.tray.setToolTip("Assistant AI (Listening...)")
         else:
-            self.tray.setIcon(self.icon_idle)
             self.action_talk.setText("Talk")
+            if not (hasattr(self.backend, "ai_thread") and self.backend.ai_thread and self.backend.ai_thread.isRunning()):
+                self.tray.setIcon(self.icon_idle)
+                self.tray.setToolTip("Assistant AI")
+
+    @pyqtSlot(str, str)
+    def on_status_changed(self, text, color_hex):
+        clean_text = text.lower()
+        if "thinking" in clean_text or "running" in clean_text or "transcribing" in clean_text:
+            self.tray.setIcon(self.icon_thinking)
+            self.tray.setToolTip(f"Assistant AI ({text})")
+        elif "listening" in clean_text or self.backend.is_recording:
+            self.tray.setIcon(self.icon_listening)
+            self.tray.setToolTip("Assistant AI (Listening...)")
+        elif "idle" in clean_text or text == "Idle":
+            self.tray.setIcon(self.icon_idle)
             self.tray.setToolTip("Assistant AI")
 
     @pyqtSlot(QSystemTrayIcon.ActivationReason)
