@@ -275,9 +275,10 @@ You can type the following commands directly into the prompt box:
 ### System Tray Integration
 Assistant lives unobtrusively in your desktop environment's system tray:
 * **Minimize on Close**: Closing the main window (`Ctrl+Q` or window close button) hides the window to the system tray instead of terminating the background process.
-* **Nerd Font Robot Tray Icon**: Visual robot icon (`󰚩`) that changes color dynamically:
-  * **Idle** (`#828c99` muted gray): Waiting for user interaction.
-  * **Listening** (`#7fd962` vibrant green): Actively recording audio input.
+* **Nerd Font Robot Tray Icon**: Visual robot icon (`󰚩`) that changes color dynamically based on activity state:
+  * **Idle** (`#828c99` muted gray): Waiting for user interaction in resting state.
+  * **Listening** (`#7fd962` vibrant green): Actively recording microphone input.
+  * **Thinking / Processing** (`#59c2ff` SicOS cyan/blue): The model is thinking or processing/executing system tools.
 * **Mouse Interactions**:
   * **Left Click**: Restores and focuses the main window (`Maximize`).
   * **Right Click**: Opens a context menu with:
