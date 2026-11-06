@@ -21,6 +21,10 @@ ApplicationWindow {
     readonly property string monoFont: "JetBrainsMono Nerd Font Mono"
     readonly property int systemFontSize: window.font.pixelSize > 0 ? window.font.pixelSize : (window.font.pointSize > 0 ? Math.round(window.font.pointSize * 1.33) : 14)
 
+    ListModel {
+        id: modelsModel
+    }
+
     Component.onCompleted: {
         inputBox.forceActiveFocus();
     }
@@ -29,6 +33,12 @@ ApplicationWindow {
         target: backend
         function onActiveModelChanged(modelName) {
             modelLabel.text = modelName;
+        }
+        function onAvailableModelsChanged(modelsList) {
+            modelsModel.clear();
+            for (var i = 0; i < modelsList.length; i++) {
+                modelsModel.append(modelsList[i]);
+            }
         }
         function onVoiceStateChanged(active) {
             isVoiceActive = active;
@@ -408,26 +418,139 @@ ApplicationWindow {
             }
         }
 
-        // Active Model Pill Badge
+        // Active Model Pill Badge (Clickable Dropdown)
         Rectangle {
             id: modelBadge
             visible: modelLabel.text !== ""
             Layout.alignment: Qt.AlignHCenter
-            height: 22
-            radius: 11
-            color: "#141822"
-            border.color: "#232a38"
+            height: 24
+            radius: 12
+            color: badgeMouseArea.containsMouse ? "#1c2230" : "#141822"
+            border.color: badgeMouseArea.containsMouse ? "#59c2ff" : "#232a38"
             border.width: 1
-            implicitWidth: modelLabel.implicitWidth + 20
+            implicitWidth: badgeRow.implicitWidth + 24
 
-            Label {
-                id: modelLabel
+            Row {
+                id: badgeRow
                 anchors.centerIn: parent
-                text: ""
-                color: "#606b7a"
-                font.family: window.monoFont
-                font.pixelSize: 11
-                font.bold: false
+                spacing: 6
+
+                Label {
+                    id: modelLabel
+                    text: ""
+                    color: badgeMouseArea.containsMouse ? "#a6b3c2" : "#606b7a"
+                    font.family: window.monoFont
+                    font.pixelSize: 11
+                    font.bold: false
+                    anchors.verticalCenter: parent.verticalCenter
+                }
+
+                Label {
+                    text: "▾"
+                    color: badgeMouseArea.containsMouse ? "#59c2ff" : "#606b7a"
+                    font.family: window.monoFont
+                    font.pixelSize: 10
+                    anchors.verticalCenter: parent.verticalCenter
+                }
+            }
+
+            MouseArea {
+                id: badgeMouseArea
+                anchors.fill: parent
+                hoverEnabled: true
+                cursorShape: Qt.PointingHandCursor
+                onClicked: {
+                    if (modelPopup.visible) {
+                        modelPopup.close();
+                    } else {
+                        modelPopup.open();
+                    }
+                }
+            }
+
+            Popup {
+                id: modelPopup
+                y: -height - 6
+                x: (parent.width - width) / 2
+                width: 240
+                padding: 6
+                closePolicy: Popup.CloseOnEscape | Popup.CloseOnPressOutsideParent
+
+                background: Rectangle {
+                    color: "#141822"
+                    radius: 12
+                    border.color: "#283446"
+                    border.width: 1
+                }
+
+                contentItem: Column {
+                    spacing: 4
+
+                    Text {
+                        text: "󰚩 Seleccionar Modelo"
+                        color: "#59c2ff"
+                        font.family: window.monoFont
+                        font.pixelSize: 12
+                        font.bold: true
+                        leftPadding: 8
+                        topPadding: 4
+                        bottomPadding: 4
+                    }
+
+                    Rectangle {
+                        width: parent.width
+                        height: 1
+                        color: "#232a38"
+                    }
+
+                    Repeater {
+                        model: modelsModel
+
+                        delegate: Rectangle {
+                            width: parent.width
+                            height: 32
+                            radius: 8
+                            color: itemMouse.containsMouse ? "#1e2638" : (model.active ? "#192230" : "transparent")
+
+                            Row {
+                                anchors.fill: parent
+                                anchors.leftMargin: 10
+                                anchors.rightMargin: 10
+                                spacing: 8
+
+                                Text {
+                                    text: model.active ? "●" : "○"
+                                    color: model.active ? "#7fd962" : "#606b7a"
+                                    font.family: window.monoFont
+                                    font.pixelSize: 11
+                                    anchors.verticalCenter: parent.verticalCenter
+                                }
+
+                                Column {
+                                    anchors.verticalCenter: parent.verticalCenter
+                                    Text {
+                                        text: model.key
+                                        color: model.active ? "#ffffff" : "#a6b3c2"
+                                        font.family: window.monoFont
+                                        font.pixelSize: 12
+                                        font.bold: model.active
+                                    }
+                                }
+                            }
+
+                            MouseArea {
+                                id: itemMouse
+                                anchors.fill: parent
+                                hoverEnabled: true
+                                cursorShape: Qt.PointingHandCursor
+                                onClicked: {
+                                    backend.switch_model(model.key);
+                                    modelPopup.close();
+                                }
+                            }
+                        }
+                    }
+                }
             }
         }
     }

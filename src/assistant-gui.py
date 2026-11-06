@@ -1664,6 +1664,7 @@ class AIGeneratorThread(QThread):
 class Backend(QObject):
     statusChanged = pyqtSignal(str, str)
     activeModelChanged = pyqtSignal(str)
+    availableModelsChanged = pyqtSignal(list)
     messageAdded = pyqtSignal(str, str)
     messageAppended = pyqtSignal(str)
     chatCleared = pyqtSignal()
@@ -1695,10 +1696,23 @@ class Backend(QObject):
     def handle_message_appended(self, text):
         self.messageAppended.emit(text)
 
+    def get_models_list(self):
+        """Return list of dicts for available models for QML popup/menu."""
+        res = []
+        for k, info in MODELS_CATALOG.items():
+            res.append({
+                "key": k,
+                "name": info.get("name", k),
+                "url": info.get("base_url", ""),
+                "active": (k == self.active_model_key),
+            })
+        return res
+
     def emit_initial_state(self):
         curr_cfg = MODELS_CATALOG.get(self.active_model_key, {})
         curr_name = curr_cfg.get("name", self.active_model_key)
         self.activeModelChanged.emit(f"{self.active_model_key} ({curr_name})")
+        self.availableModelsChanged.emit(self.get_models_list())
         self.voiceStateChanged.emit(self.is_recording or self.is_voice_mode)
         if self.is_voice_mode:
             self.statusChanged.emit("󰍬 Voice Mode Active", "#7fd962")
@@ -1772,6 +1786,7 @@ class Backend(QObject):
         )
         self.messageAdded.emit("sys", help_text)
 
+    @pyqtSlot(str)
     def switch_model(self, target_key=""):
         """List or switch active LLM from the models catalog."""
         target = (target_key or "").strip().lower()
@@ -1786,6 +1801,7 @@ class Backend(QObject):
                 curr_cfg = MODELS_CATALOG[self.active_model_key]
                 m_name = curr_cfg.get("name", self.active_model_key)
                 self.activeModelChanged.emit(f"{self.active_model_key} ({m_name})")
+                self.availableModelsChanged.emit(self.get_models_list())
                 self.messageAdded.emit("sys", f"🔄 Modelo cambiado a: **{self.active_model_key}** (`{m_name}`)")
                 return
 
@@ -1801,6 +1817,7 @@ class Backend(QObject):
             curr_cfg = MODELS_CATALOG[matched_key]
             m_name = curr_cfg.get("name", matched_key)
             self.activeModelChanged.emit(f"{matched_key} ({m_name})")
+            self.availableModelsChanged.emit(self.get_models_list())
             self.messageAdded.emit("sys", f"🔄 Modelo seleccionado: **{matched_key}** (`{m_name}`)")
         else:
             lines = ["🤖 **Modelos disponibles en catálogo:**"]
