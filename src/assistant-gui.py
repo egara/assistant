@@ -11,7 +11,7 @@ import time
 import shutil
 
 from PyQt6.QtWidgets import QApplication, QSystemTrayIcon, QMenu
-from PyQt6.QtGui import QIcon, QPixmap, QPainter, QColor, QFont, QAction
+from PyQt6.QtGui import QIcon, QPixmap, QPainter, QColor, QFont, QAction, QPainterPath
 from PyQt6.QtQml import QQmlApplicationEngine
 from PyQt6.QtCore import Qt, QTimer, pyqtSignal, pyqtSlot, QThread, QObject, QUrl
 
@@ -2140,16 +2140,23 @@ class Backend(QObject):
 
 
 def create_tray_icon(color_hex):
-    """Render a clean Nerd Font robot glyph icon for the System Tray."""
+    """Render an exactly geometrically centered Nerd Font robot glyph icon for the System Tray."""
     pix = QPixmap(64, 64)
     pix.fill(Qt.GlobalColor.transparent)
     painter = QPainter(pix)
     painter.setRenderHint(QPainter.RenderHint.Antialiasing)
-    painter.setRenderHint(QPainter.RenderHint.TextAntialiasing)
-    painter.setPen(QColor(color_hex))
-    font = QFont("JetBrainsMono Nerd Font", 44)
-    painter.setFont(font)
-    painter.drawText(pix.rect(), Qt.AlignmentFlag.AlignCenter, "\U000f06a9")
+
+    font = QFont("JetBrainsMono Nerd Font", 36)
+    path = QPainterPath()
+    path.addText(0, 0, font, "\U000f06a9")
+    br = path.boundingRect()
+
+    # Center mathematically to avoid font baseline advance and glyph overhang clipping
+    dx = (64.0 - br.width()) / 2.0 - br.x()
+    dy = (64.0 - br.height()) / 2.0 - br.y()
+
+    painter.translate(dx, dy)
+    painter.fillPath(path, QColor(color_hex))
     painter.end()
     return QIcon(pix)
 
