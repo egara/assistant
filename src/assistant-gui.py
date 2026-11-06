@@ -2140,22 +2140,27 @@ class Backend(QObject):
 
 
 def create_tray_icon(color_hex):
-    """Render an exactly geometrically centered Nerd Font robot glyph icon for the System Tray."""
+    """Render a fully scaled and geometrically centered Nerd Font robot glyph for the System Tray."""
     pix = QPixmap(64, 64)
     pix.fill(Qt.GlobalColor.transparent)
     painter = QPainter(pix)
     painter.setRenderHint(QPainter.RenderHint.Antialiasing)
 
-    font = QFont("JetBrainsMono Nerd Font", 36)
+    font = QFont("JetBrainsMono Nerd Font", 48)
     path = QPainterPath()
     path.addText(0, 0, font, "\U000f06a9")
     br = path.boundingRect()
 
+    # Scale the glyph to fill the 64x64 icon box (with 2px edge safety padding) matching other tray icons
+    target_dim = 60.0
+    scale = target_dim / max(br.width(), br.height())
+
     # Center mathematically to avoid font baseline advance and glyph overhang clipping
-    dx = (64.0 - br.width()) / 2.0 - br.x()
-    dy = (64.0 - br.height()) / 2.0 - br.y()
+    dx = (64.0 - br.width() * scale) / 2.0 - br.x() * scale
+    dy = (64.0 - br.height() * scale) / 2.0 - br.y() * scale
 
     painter.translate(dx, dy)
+    painter.scale(scale, scale)
     painter.fillPath(path, QColor(color_hex))
     painter.end()
     return QIcon(pix)
