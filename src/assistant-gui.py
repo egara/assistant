@@ -107,35 +107,101 @@ OBSIDIAN_HEADERS = {
     "Accept": "application/json",
 }
 
-LLM_API_KEY = config.get("llm", {}).get("api_key", "sk-none")
-LLM_BASE_URL = config.get("llm", {}).get("base_url", "http://127.0.0.1:8080/v1")
-LLM_MODEL = config.get("llm", {}).get("model", "Hermes-3-8B")
-VISION_ENABLED = config.get("llm", {}).get("vision_enabled", True)
-LLM_TIMEOUT = float(config.get("llm", {}).get("timeout", 180.0))
+# ==========================================
+# 🤖 MULTI-MODEL LLM MANAGER & CONFIGURATION
+# ==========================================
+LLM_CONF = config.get("llm", {})
 
-# Fallback LLM configuration
-FALLBACK_CONF = config.get("llm", {}).get("fallback")
-if FALLBACK_CONF:
-    fallback_timeout = float(FALLBACK_CONF.get("timeout", 180.0))
-    FALLBACK_CLIENT = OpenAI(
-        base_url=FALLBACK_CONF.get("base_url", "http://127.0.0.1:8010/v1"),
-        api_key=FALLBACK_CONF.get("api_key", "sk-none"),
-        timeout=Timeout(fallback_timeout, connect=10.0),
+MODELS_CATALOG = {}
+# 1. New multi-model format: {"models": {"gemma": {...}, "glm": {...}}}
+if isinstance(LLM_CONF.get("models"), dict) and LLM_CONF["models"]:
+    for key, spec in LLM_CONF["models"].items():
+        if isinstance(spec, dict):
+            m_key = str(key).strip()
+            m_name = spec.get("name") or spec.get("model") or m_key
+            m_url = spec.get("base_url", "http://127.0.0.1:8080/v1")
+            m_key_auth = spec.get("api_key", "sk-none")
+            m_timeout = float(spec.get("timeout", 180.0))
+            m_vision = spec.get("vision_enabled", True)
+            m_provider = spec.get("provider_name", "local")
+
+            client_inst = OpenAI(
+                base_url=m_url,
+                api_key=m_key_auth,
+                timeout=Timeout(m_timeout, connect=10.0),
+            )
+
+            MODELS_CATALOG[m_key] = {
+                "key": m_key,
+                "name": m_name,
+                "client": client_inst,
+                "base_url": m_url,
+                "api_key": m_key_auth,
+                "vision_enabled": m_vision,
+                "provider_name": m_provider,
+            }
+
+# 2. Backward compatibility: if "models" is not defined, read legacy primary and fallback
+if not MODELS_CATALOG:
+    primary_name = LLM_CONF.get("model", "Hermes-3-8B")
+    primary_url = LLM_CONF.get("base_url", "http://127.0.0.1:8080/v1")
+    primary_key = LLM_CONF.get("api_key", "sk-none")
+    primary_timeout = float(LLM_CONF.get("timeout", 180.0))
+    primary_vision = LLM_CONF.get("vision_enabled", True)
+    primary_provider = LLM_CONF.get("provider_name", "local")
+
+    primary_client = OpenAI(
+        base_url=primary_url,
+        api_key=primary_key,
+        timeout=Timeout(primary_timeout, connect=10.0),
     )
-    FALLBACK_MODEL = FALLBACK_CONF.get("model", "GLM-5.3-Flash")
-    FALLBACK_VISION_ENABLED = FALLBACK_CONF.get("vision_enabled", True)
-else:
-    FALLBACK_CLIENT = None
-    FALLBACK_MODEL = None
-    FALLBACK_VISION_ENABLED = True
+
+    primary_id = primary_name.split(":")[0].lower() if ":" in primary_name else "primary"
+    MODELS_CATALOG[primary_id] = {
+        "key": primary_id,
+        "name": primary_name,
+        "client": primary_client,
+        "base_url": primary_url,
+        "api_key": primary_key,
+        "vision_enabled": primary_vision,
+        "provider_name": primary_provider,
+    }
+
+    fallback_conf = LLM_CONF.get("fallback")
+    if isinstance(fallback_conf, dict):
+        fb_name = fallback_conf.get("model", "GLM-5.3-Flash")
+        fb_url = fallback_conf.get("base_url", "http://127.0.0.1:8010/v1")
+        fb_key = fallback_conf.get("api_key", "sk-none")
+        fb_timeout = float(fallback_conf.get("timeout", 180.0))
+        fb_vision = fallback_conf.get("vision_enabled", True)
+        fb_provider = fallback_conf.get("provider_name", "local")
+
+        fb_client = OpenAI(
+            base_url=fb_url,
+            api_key=fb_key,
+            timeout=Timeout(fb_timeout, connect=10.0),
+        )
+
+        fb_id = fb_name.split(":")[0].lower() if ":" in fb_name else "fallback"
+        MODELS_CATALOG[fb_id] = {
+            "key": fb_id,
+            "name": fb_name,
+            "client": fb_client,
+            "base_url": fb_url,
+            "api_key": fb_key,
+            "vision_enabled": fb_vision,
+            "provider_name": fb_provider,
+        }
+
+# Determine initial active model
+DEFAULT_MODEL_KEY = LLM_CONF.get("default")
+if not DEFAULT_MODEL_KEY or DEFAULT_MODEL_KEY not in MODELS_CATALOG:
+    DEFAULT_MODEL_KEY = next(iter(MODELS_CATALOG))
+
+ACTIVE_MODEL_KEY = DEFAULT_MODEL_KEY
 
 VOICE_CONF = config.get("voice", {})
 MCP_SERVERS_CONF = config.get("mcp_servers", {})
-client = OpenAI(
-    base_url=LLM_BASE_URL,
-    api_key=LLM_API_KEY,
-    timeout=Timeout(LLM_TIMEOUT, connect=10.0),
-)
 
 CONTEXT_PATH = os.path.expanduser(
     config.get("llm", {}).get("system_context", "~/.config/assistant/context.md")
@@ -1279,9 +1345,10 @@ class AIGeneratorThread(QThread):
         "zeditor",
     ]
 
-    def __init__(self, messages):
+    def __init__(self, messages, model_config):
         super().__init__()
         self.messages = messages
+        self.model_config = model_config
         self.approval_event = threading.Event()
         self.approval_result = False
         self._is_stopped = False
@@ -1316,9 +1383,10 @@ class AIGeneratorThread(QThread):
                             has_image = True
                             break
 
-            # Select active client and model (primary with fallback support)
-            active_client = client
-            active_model = LLM_MODEL
+            # Select active client and model from configured model spec
+            active_client = self.model_config.get("client")
+            active_model = self.model_config.get("name")
+            model_key = self.model_config.get("key", active_model)
 
             api_kwargs = {
                 "model": active_model,
@@ -1333,16 +1401,19 @@ class AIGeneratorThread(QThread):
 
             try:
                 response = active_client.chat.completions.create(**api_kwargs)
-                self.active_model_signal.emit(active_model)
-            except (openai.APIConnectionError, openai.APIStatusError) as primary_err:
-                if FALLBACK_CLIENT:
-                    active_client = FALLBACK_CLIENT
-                    active_model = FALLBACK_MODEL
-                    self.active_model_signal.emit(active_model)
-                    api_kwargs["model"] = active_model
-                    response = active_client.chat.completions.create(**api_kwargs)
-                else:
-                    raise primary_err
+                self.active_model_signal.emit(f"{model_key} ({active_model})")
+            except openai.APIConnectionError as conn_err:
+                self.sys_message_signal.emit(
+                    "sys", f"󰀦 Error: No se pudo conectar al endpoint de '{model_key}' ({active_model}) en {self.model_config.get('base_url')}."
+                )
+                self.finished_signal.emit("")
+                return
+            except Exception as req_err:
+                self.sys_message_signal.emit(
+                    "sys", f"󰀦 Error en '{model_key}': {str(req_err)}"
+                )
+                self.finished_signal.emit("")
+                return
             tool_calls, full_content = [], ""
             bubble_created = False
 
@@ -1519,15 +1590,18 @@ class AIGeneratorThread(QThread):
 
                 try:
                     stream_response = active_client.chat.completions.create(**api_kwargs_t2)
-                except (openai.APIConnectionError, openai.APIStatusError) as t2_err:
-                    if active_client != FALLBACK_CLIENT and FALLBACK_CLIENT:
-                        active_client = FALLBACK_CLIENT
-                        active_model = FALLBACK_MODEL
-                        self.active_model_signal.emit(active_model)
-                        api_kwargs_t2["model"] = active_model
-                        stream_response = active_client.chat.completions.create(**api_kwargs_t2)
-                    else:
-                        raise t2_err
+                except openai.APIConnectionError as t2_conn_err:
+                    self.sys_message_signal.emit(
+                        "sys", f"󰀦 Error: Conexión perdida con '{model_key}' en Turn 2."
+                    )
+                    self.finished_signal.emit("")
+                    return
+                except Exception as t2_err:
+                    self.sys_message_signal.emit(
+                        "sys", f"󰀦 Error en Turn 2 ({model_key}): {str(t2_err)}"
+                    )
+                    self.finished_signal.emit("")
+                    return
 
                 buffer = ""
                 last_emit = time.time()
@@ -1605,6 +1679,7 @@ class Backend(QObject):
         self.is_recording = False
         self.rec_process = None
         self.messages = []
+        self.active_model_key = ACTIVE_MODEL_KEY
 
         self.timer = QTimer()
         self.timer.timeout.connect(self.check_signals)
@@ -1621,7 +1696,9 @@ class Backend(QObject):
         self.messageAppended.emit(text)
 
     def emit_initial_state(self):
-        self.activeModelChanged.emit(LLM_MODEL)
+        curr_cfg = MODELS_CATALOG.get(self.active_model_key, {})
+        curr_name = curr_cfg.get("name", self.active_model_key)
+        self.activeModelChanged.emit(f"{self.active_model_key} ({curr_name})")
         self.voiceStateChanged.emit(self.is_recording or self.is_voice_mode)
         if self.is_voice_mode:
             self.statusChanged.emit("󰍬 Voice Mode Active", "#7fd962")
@@ -1689,10 +1766,51 @@ class Backend(QObject):
             "󰋖 **Comandos disponibles:**\n\n"
             "- **/new** o **/reset**: Inicia una nueva sesión desde cero, eliminando el contexto y limpiando el chat.\n"
             "- **/clear**: Limpia los mensajes en pantalla y vacía la memoria de la conversación.\n"
+            "- **/model**: Muestra los modelos configurados o alterna al siguiente. Usa `/model <nombre>` para cambiar a uno específico.\n"
             "- **/help**: Muestra esta información de ayuda.\n"
             "- **󰍬 Botón o tecla 'v'**: Pulsa el botón de micrófono o escribe 'v' y pulsa Enter para activar/desactivar el modo de voz."
         )
         self.messageAdded.emit("sys", help_text)
+
+    def switch_model(self, target_key=""):
+        """List or switch active LLM from the models catalog."""
+        target = (target_key or "").strip().lower()
+        keys = list(MODELS_CATALOG.keys())
+
+        if not target:
+            # If there's more than one, cycle to the next
+            if len(keys) > 1:
+                curr_idx = keys.index(self.active_model_key) if self.active_model_key in keys else 0
+                next_idx = (curr_idx + 1) % len(keys)
+                self.active_model_key = keys[next_idx]
+                curr_cfg = MODELS_CATALOG[self.active_model_key]
+                m_name = curr_cfg.get("name", self.active_model_key)
+                self.activeModelChanged.emit(f"{self.active_model_key} ({m_name})")
+                self.messageAdded.emit("sys", f"🔄 Modelo cambiado a: **{self.active_model_key}** (`{m_name}`)")
+                return
+
+        # Direct match or listing
+        matched_key = None
+        for k in keys:
+            if target == k.lower() or target == MODELS_CATALOG[k].get("name", "").lower():
+                matched_key = k
+                break
+
+        if matched_key:
+            self.active_model_key = matched_key
+            curr_cfg = MODELS_CATALOG[matched_key]
+            m_name = curr_cfg.get("name", matched_key)
+            self.activeModelChanged.emit(f"{matched_key} ({m_name})")
+            self.messageAdded.emit("sys", f"🔄 Modelo seleccionado: **{matched_key}** (`{m_name}`)")
+        else:
+            lines = ["🤖 **Modelos disponibles en catálogo:**"]
+            for k in keys:
+                m_info = MODELS_CATALOG[k]
+                m_name = m_info.get("name", k)
+                status = " **[ACTIVO]**" if k == self.active_model_key else ""
+                lines.append(f"- • `{k}`: {m_name} ({m_info.get('base_url')}){status}")
+            lines.append("\nUso: `/model <nombre>` o solo `/model` para alternar al siguiente.")
+            self.messageAdded.emit("sys", "\n".join(lines))
 
     @pyqtSlot()
     def save_history(self):
@@ -1754,15 +1872,21 @@ class Backend(QObject):
 
     @pyqtSlot(str)
     def processInput(self, text):
-        clean_cmd = text.strip().lower()
-        if clean_cmd in ["/new", "/reset"]:
+        clean_cmd = text.strip()
+        lower_cmd = clean_cmd.lower()
+        if lower_cmd in ["/new", "/reset"]:
             self.reset_session()
             return
-        elif clean_cmd == "/clear":
+        elif lower_cmd == "/clear":
             self.reset_session()
             return
-        elif clean_cmd == "/help":
+        elif lower_cmd == "/help":
             self.show_help()
+            return
+        elif lower_cmd == "/model" or lower_cmd.startswith("/model "):
+            parts = clean_cmd.split(maxsplit=1)
+            arg = parts[1].strip() if len(parts) > 1 else ""
+            self.switch_model(arg)
             return
 
         self.interrupt_ai()
@@ -1934,7 +2058,8 @@ class Backend(QObject):
                 self.ai_thread.stop()
             self.ai_thread.deleteLater()
 
-        self.ai_thread = AIGeneratorThread(self.messages)
+        selected_model_cfg = MODELS_CATALOG.get(self.active_model_key, next(iter(MODELS_CATALOG.values())))
+        self.ai_thread = AIGeneratorThread(self.messages, selected_model_cfg)
         self.ai_thread.status_signal.connect(self.statusChanged.emit)
         self.ai_thread.active_model_signal.connect(self.activeModelChanged.emit)
         self.ai_thread.new_bubble_signal.connect(
