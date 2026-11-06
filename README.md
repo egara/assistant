@@ -272,6 +272,19 @@ You can type the following commands directly into the prompt box:
 * **/help**: Displays an interactive help modal with quick command tips.
 * **`v`**: Typing `v` and pressing Enter instantly toggles push-to-talk voice recording mode.
 
+### System Tray Integration
+Assistant lives unobtrusively in your desktop environment's system tray:
+* **Minimize on Close**: Closing the main window (`Ctrl+Q` or window close button) hides the window to the system tray instead of terminating the background process.
+* **Nerd Font Robot Tray Icon**: Visual robot icon (`󰚩`) that changes color dynamically:
+  * **Idle** (`#828c99` muted gray): Waiting for user interaction.
+  * **Listening** (`#7fd962` vibrant green): Actively recording audio input.
+* **Mouse Interactions**:
+  * **Left Click**: Restores and focuses the main window (`Maximize`).
+  * **Right Click**: Opens a context menu with:
+    * **Maximize**: Shows the conversation window.
+    * **Talk / Stop talking**: Toggles continuous background voice conversation without showing the window. All spoken dialogues, tool invocations, and answers are persisted to history and visible upon maximizing.
+    * **Exit**: Fully terminates the Assistant process and removes the tray icon.
+
 ---
 
 ## Agentic Architecture & System Safety
