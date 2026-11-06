@@ -18,7 +18,8 @@ The system has been fully verified and tested on the following setup:
 * **Desktop Environment:** Hyprland Window Manager (Wayland)
 * **Memory:** 32 GB RAM (Shared memory)
 * **Audio Server:** PipeWire (via `wireplumber` & `pw-play`)
-* **Local LLM:** Gemma-4-e2b hosted on a local llama-cpp server / FastFlowLM
+* **Local LLM:** Gemma-4-e2b hosted on a local llama-cpp server / FastFlowLM (with optional Fallback LLM)
+* **Application Launcher:** `uwsm app` wrapper with XDG desktop detection and terminal wrapping (via `kitty`)
 * CPU: AMD Ryzen 7 8845HS (16) @ 5.14 GHz
 * GPU: Integrated Laptop GPU
 
@@ -125,7 +126,14 @@ This block configures Assistant's core intelligence engine. It utilizes an OpenA
     "model": "gemma4-it:12b",
     "vision_enabled": true,
     "history_duration_minutes": 15,
-    "system_context": "~/.config/assistant/context.md"
+    "system_context": "~/.config/assistant/context.md",
+    "fallback": {
+        "provider_name": "local",
+        "api_key": "sk-none",
+        "base_url": "http://127.0.0.1:8010/v1",
+        "model": "GLM-5.3-Flash",
+        "vision_enabled": true
+    }
 }
 ```
 
@@ -136,6 +144,7 @@ This block configures Assistant's core intelligence engine. It utilizes an OpenA
 * **`vision_enabled`** *(Boolean)*: `true` or `false`. When enabled, Assistant allows binary base64 vision payloads via the screen/clipboard mechanics.
 * **`history_duration_minutes`** *(Integer/Float)*: Controls memory management. Drops historical message logs from the sliding context window if the file modification timestamp exceeds this duration.
 * **`system_context`** *(String)*: Absolute path pointing to a persistent system context profile markdown file.
+* **`fallback`** *(Object, Optional)*: Secondary LLM configuration (`base_url`, `model`, `api_key`, `vision_enabled`). If the primary model endpoint is unreachable or times out, Assistant automatically routes requests through the fallback model and updates the active model indicator in the UI.
 
 ---
 
@@ -249,20 +258,41 @@ Use this profile if you want total privacy with local speech synthesis.
 
 ---
 
+## Modern User Interface & Slash Commands
+
+Assistant features a clean Material Design GUI styled with **SicOS Nerd Font** icons and high contrast:
+* **Interactive Help & Reset**: Click the `?` icon in the upper-right corner or the dedicated microphone toggle on the left of the input field.
+* **Active LLM Badge**: The currently connected model is dynamically shown right below the prompt input box.
+* **Auto-Focus & Smart Scroll**: Automatic focus on the input box upon launch, auto-scrolling during fast token streaming, and free manual scrolling when inspecting historical outputs.
+
+### Built-in Slash Commands & Shortcuts
+You can type the following commands directly into the prompt box:
+* **/new** or **/reset**: Resets the current conversation context, wipes the chat memory file, and starts a fresh session.
+* **/clear**: Clears messages from the screen and purges context history.
+* **/help**: Displays an interactive help modal with quick command tips.
+* **`v`**: Typing `v` and pressing Enter instantly toggles push-to-talk voice recording mode.
+
+---
+
 ## Agentic Architecture & System Safety
 
 Unlike basic chat interfaces, Assistant parses your prompt and dynamically decides whether it needs to invoke a native tool.
 
 ### Built-in & MCP Tools
-1. `get_weather(location)`: Fetches real-time terminal-friendly formatting from `wttr.in`.
-2. `web_search(query)`: Searches the web prioritizing local SearXNG (via MCP) with automatic DuckDuckGo fallback.
-3. `read_file(path)`: Directly reads the contents of any file on the local filesystem.
-4. `write_file(path, content)`: Creates or updates local files with specified content and creates directories if necessary.
-5. `replace_in_file(path, target, replacement)`: Finds and replaces text within an existing file.
-6. `obsidian_search` / `obsidian_read` / `obsidian_write`: Manages notes using the encrypted Obsidian Local REST API.
-7. `manage_desktop(action, target, window_address)`: Switches workspaces or moves windows seamlessly on Hyprland.
-8. `execute_command(command)`: Runs local bash pipelines (with detached background execution for GUI apps).
-9. **Dynamic MCP Tools**: Any additional tools exposed by configured MCP servers (e.g. `current_time`, `convert_time`, `searxng_web_search`, etc.).
+1. `open_application(app, target)`: Universally detects installed desktop applications (`.desktop` entries via XDG) and CLI tools (`yazi`, `btop`, etc.). Automatically wraps GUI tools with `uwsm app` for Wayland session consistency and spawns terminal apps inside `kitty`. Silent execution prevents repetitive audio or unnecessary chat turns.
+2. `get_weather(location)`: Fetches precise meteorological data and multi-day forecasts via Open-Meteo's geocoding API with localized WMO status codes.
+3. `manage_desktop(action, target, window_address)`: Hyprland workspace and window manager controller:
+   * **Versioned Knowledge Base**: Dynamically detects the installed Hyprland version and chooses the exact dispatcher syntax (e.g., Lua dispatchers for v0.57+).
+   * **User Mutable Knowledge Layer**: Learns and saves unknown dispatchers to `~/.local/share/assistant/hyprland_knowledge.json`.
+   * **Window Targeting**: Targets and focuses specific windows for operations such as `close`, `float`, and `fullscreen`.
+   * **Silent Feedback**: Fast window/workspace movements execute silently without interrupting the voice flow.
+4. `read_file(path)`: Directly reads the contents of any file on the local filesystem.
+5. `write_file(path, content)`: Creates or updates local files with specified content and creates directories if necessary.
+6. `replace_in_file(path, target, replacement)`: Finds and replaces text within an existing file.
+7. `obsidian_search` / `obsidian_read` / `obsidian_write`: Manages notes using the encrypted Obsidian Local REST API.
+8. `web_search(query)`: Searches the web prioritizing local SearXNG (via MCP) with automatic DuckDuckGo fallback.
+9. `execute_command(command)`: Runs local bash pipelines (with detached background execution for GUI apps).
+10. **Dynamic MCP Tools**: Any additional tools exposed by configured MCP servers (e.g. `current_time`, `convert_time`, `searxng_web_search`, etc.).
 
 ### Execution Safety Guardrails & Threading Isolation
 Assistant classifies all system bash commands before executing them:
