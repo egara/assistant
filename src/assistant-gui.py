@@ -8,6 +8,7 @@ import urllib.parse
 import subprocess
 import threading
 import time
+import shutil
 
 from PyQt6.QtWidgets import QApplication
 from PyQt6.QtQml import QQmlApplicationEngine
@@ -70,6 +71,13 @@ for path in system_knowledge_paths:
     if os.path.exists(path):
         SYSTEM_KNOWLEDGE_FILE = path
         break
+
+# Seed user knowledge file from factory if it does not exist yet
+if SYSTEM_KNOWLEDGE_FILE and not os.path.exists(USER_KNOWLEDGE_FILE):
+    try:
+        shutil.copyfile(SYSTEM_KNOWLEDGE_FILE, USER_KNOWLEDGE_FILE)
+    except Exception as e:
+        print(f"[Hyprland Knowledge] Notice: could not seed user knowledge: {e}")
 
 QML_FILE = None
 for path in qml_paths_to_check:

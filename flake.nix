@@ -112,6 +112,12 @@
                 ln -sf @out@/share/assistant/sounds/* "$HOME/.local/share/assistant/sounds/"
                 ln -sf @out@/share/assistant/models/* "$HOME/.local/share/assistant/models/"
 
+                # Initialize user mutable hyprland knowledge base if it does not exist
+                if [ ! -f "$HOME/.local/share/assistant/hyprland_knowledge.json" ] && [ -f "@out@/share/assistant/hyprland_knowledge.json" ]; then
+                  cp "@out@/share/assistant/hyprland_knowledge.json" "$HOME/.local/share/assistant/hyprland_knowledge.json"
+                  chmod 644 "$HOME/.local/share/assistant/hyprland_knowledge.json"
+                fi
+
                 export PATH="@path@:$PATH"
                 exec @out@/libexec/assistant-unwrapped "$@"
                 EOF
