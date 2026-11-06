@@ -143,6 +143,7 @@ This block configures Assistant's core intelligence engine. It utilizes an OpenA
 * **`model`** *(String)*: The precise model identifier string passed in the payload API request.
 * **`vision_enabled`** *(Boolean)*: `true` or `false`. When enabled, Assistant allows binary base64 vision payloads via the screen/clipboard mechanics.
 * **`history_duration_minutes`** *(Integer/Float)*: Controls memory management. Drops historical message logs from the sliding context window if the file modification timestamp exceeds this duration.
+* **`timeout`** *(Float, Optional)*: Request read timeout in seconds for LLM generation (defaults to `180.0`). Prevents premature disconnection when processing heavy contexts or extensive prefill sequences.
 * **`system_context`** *(String)*: Absolute path pointing to a persistent system context profile markdown file.
 * **`fallback`** *(Object, Optional)*: Secondary LLM configuration (`base_url`, `model`, `api_key`, `vision_enabled`). If the primary model endpoint is unreachable or times out, Assistant automatically routes requests through the fallback model and updates the active model indicator in the UI.
 
