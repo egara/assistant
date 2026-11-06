@@ -10,6 +10,11 @@ ApplicationWindow {
     title: "Assistant AI"
     color: "#0f141c"
 
+    onClosing: function(close) {
+        close.accepted = false;
+        window.hide();
+    }
+
     property int activeAiIndex: -1
     property bool userScrolledUp: false
     property bool isVoiceActive: false

@@ -10,7 +10,8 @@ import threading
 import time
 import shutil
 
-from PyQt6.QtWidgets import QApplication
+from PyQt6.QtWidgets import QApplication, QSystemTrayIcon, QMenu
+from PyQt6.QtGui import QIcon, QPixmap, QPainter, QColor, QFont, QAction
 from PyQt6.QtQml import QQmlApplicationEngine
 from PyQt6.QtCore import Qt, QTimer, pyqtSignal, pyqtSlot, QThread, QObject, QUrl
 
@@ -1994,8 +1995,100 @@ class Backend(QObject):
             self.stopButtonStateChanged.emit(False)
 
 
+def create_tray_icon(color_hex):
+    """Render a clean Nerd Font robot glyph icon for the System Tray."""
+    pix = QPixmap(64, 64)
+    pix.fill(Qt.GlobalColor.transparent)
+    painter = QPainter(pix)
+    painter.setRenderHint(QPainter.RenderHint.Antialiasing)
+    painter.setRenderHint(QPainter.RenderHint.TextAntialiasing)
+    painter.setPen(QColor(color_hex))
+    font = QFont("JetBrainsMono Nerd Font", 44)
+    painter.setFont(font)
+    painter.drawText(pix.rect(), Qt.AlignmentFlag.AlignCenter, "\U000f06a9")
+    painter.end()
+    return QIcon(pix)
+
+
+class TrayManager(QObject):
+    """Manages the System Tray icon, states, and context menu."""
+
+    def __init__(self, app, window, backend):
+        super().__init__()
+        self.app = app
+        self.window = window
+        self.backend = backend
+
+        self.icon_idle = create_tray_icon("#828c99")
+        self.icon_listening = create_tray_icon("#7fd962")
+
+        self.tray = QSystemTrayIcon(self.icon_idle, self.app)
+        self.tray.setToolTip("Assistant AI")
+
+        self.menu = QMenu()
+        self.action_maximize = QAction("Maximize", self.menu)
+        self.action_maximize.triggered.connect(self.show_window)
+        self.menu.addAction(self.action_maximize)
+
+        self.action_talk = QAction("Talk", self.menu)
+        self.action_talk.triggered.connect(self.toggle_talk)
+        self.menu.addAction(self.action_talk)
+
+        self.menu.addSeparator()
+
+        self.action_exit = QAction("Exit", self.menu)
+        self.action_exit.triggered.connect(self.exit_app)
+        self.menu.addAction(self.action_exit)
+
+        self.tray.setContextMenu(self.menu)
+        self.tray.activated.connect(self.on_tray_activated)
+
+        # Hook voice state changes to update icon and menu context
+        self.backend.voiceStateChanged.connect(self.on_voice_state_changed)
+
+        self.tray.show()
+
+    @pyqtSlot()
+    def show_window(self):
+        if self.window:
+            self.window.show()
+            self.window.raise_()
+            self.window.requestActivate()
+
+    @pyqtSlot()
+    def toggle_talk(self):
+        if self.backend.is_recording or self.backend.is_voice_mode:
+            self.backend.interrupt_ai()
+        else:
+            self.backend.startVoiceRecording()
+
+    @pyqtSlot(bool)
+    def on_voice_state_changed(self, active):
+        if active:
+            self.tray.setIcon(self.icon_listening)
+            self.action_talk.setText("Stop talking")
+            self.tray.setToolTip("Assistant AI (Listening...)")
+        else:
+            self.tray.setIcon(self.icon_idle)
+            self.action_talk.setText("Talk")
+            self.tray.setToolTip("Assistant AI")
+
+    @pyqtSlot(QSystemTrayIcon.ActivationReason)
+    def on_tray_activated(self, reason):
+        if reason == QSystemTrayIcon.ActivationReason.Trigger:
+            # Left mouse click
+            self.show_window()
+
+    @pyqtSlot()
+    def exit_app(self):
+        self.backend.interrupt_ai()
+        self.tray.hide()
+        self.app.quit()
+
+
 if __name__ == "__main__":
     app = QApplication(sys.argv)
+    app.setQuitOnLastWindowClosed(False)
     engine = QQmlApplicationEngine()
 
     initial_q = sys.argv[1] if len(sys.argv) > 1 else ""
@@ -2007,6 +2100,9 @@ if __name__ == "__main__":
 
     if not engine.rootObjects():
         sys.exit(-1)
+
+    window = engine.rootObjects()[0]
+    tray_manager = TrayManager(app, window, backend)
 
     QTimer.singleShot(100, backend.emit_initial_state)
 
