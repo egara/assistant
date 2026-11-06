@@ -16,7 +16,7 @@ from PyQt6.QtQml import QQmlApplicationEngine
 from PyQt6.QtCore import Qt, QTimer, pyqtSignal, pyqtSlot, QThread, QObject, QUrl
 
 import openai
-from openai import OpenAI
+from openai import OpenAI, Timeout
 from ddgs import DDGS
 import requests
 import urllib3
@@ -111,14 +111,16 @@ LLM_API_KEY = config.get("llm", {}).get("api_key", "sk-none")
 LLM_BASE_URL = config.get("llm", {}).get("base_url", "http://127.0.0.1:8080/v1")
 LLM_MODEL = config.get("llm", {}).get("model", "Hermes-3-8B")
 VISION_ENABLED = config.get("llm", {}).get("vision_enabled", True)
+LLM_TIMEOUT = float(config.get("llm", {}).get("timeout", 180.0))
 
 # Fallback LLM configuration
 FALLBACK_CONF = config.get("llm", {}).get("fallback")
 if FALLBACK_CONF:
+    fallback_timeout = float(FALLBACK_CONF.get("timeout", 180.0))
     FALLBACK_CLIENT = OpenAI(
         base_url=FALLBACK_CONF.get("base_url", "http://127.0.0.1:8010/v1"),
         api_key=FALLBACK_CONF.get("api_key", "sk-none"),
-        timeout=FALLBACK_CONF.get("timeout", 15.0),
+        timeout=Timeout(fallback_timeout, connect=10.0),
     )
     FALLBACK_MODEL = FALLBACK_CONF.get("model", "GLM-5.3-Flash")
     FALLBACK_VISION_ENABLED = FALLBACK_CONF.get("vision_enabled", True)
@@ -132,7 +134,7 @@ MCP_SERVERS_CONF = config.get("mcp_servers", {})
 client = OpenAI(
     base_url=LLM_BASE_URL,
     api_key=LLM_API_KEY,
-    timeout=config.get("llm", {}).get("timeout", 15.0),
+    timeout=Timeout(LLM_TIMEOUT, connect=10.0),
 )
 
 CONTEXT_PATH = os.path.expanduser(
