@@ -274,7 +274,7 @@ Use this profile if you want total privacy with local speech synthesis.
 
 Assistant features a clean Material Design GUI styled with **SicOS Nerd Font** icons and high contrast:
 * **Interactive Help & Reset**: Click the `?` icon in the upper-right corner or the dedicated microphone toggle on the left of the input field.
-* **Active LLM Badge**: The currently connected model is dynamically shown right below the prompt input box.
+* **Interactive Model Selector Badge**: The active model pill badge right below the input box shows the current model and acts as a clickable dropdown selector to switch models on the fly without typing commands.
 * **Auto-Focus & Smart Scroll**: Automatic focus on the input box upon launch, auto-scrolling during fast token streaming, and free manual scrolling when inspecting historical outputs.
 
 ### Built-in Slash Commands & Shortcuts
