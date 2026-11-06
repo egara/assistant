@@ -116,36 +116,47 @@ Assistant generates its configuration file at `~/.config/assistant/config.json`.
 
 ### 1. The `"llm"` Block
 
-This block configures Assistant's core intelligence engine. It utilizes an OpenAI-compatible API scheme, meaning it can connect to local backends (`FastFlowLM`, `llama.cpp`, `Ollama`, `vLLM`) or external clouds (`Groq`, `OpenRouter`, `OpenAI`).
+This block configures Assistant's multi-model intelligence engine. It supports multiple model providers and local/cloud backends simultaneously (`FastFlowLM`, `llama.cpp`, `Ollama`, `vLLM`, `Groq`, `OpenRouter`, `OpenAI`). You can seamlessly switch between configured models at runtime using the `/model` command.
 
 ```json
 "llm": {
-    "provider_name": "local",
-    "api_key": "sk-none",
-    "base_url": "http://127.0.0.1:52625/v1",
-    "model": "gemma4-it:12b",
-    "vision_enabled": true,
+    "default": "gemma",
     "history_duration_minutes": 15,
     "system_context": "~/.config/assistant/context.md",
-    "fallback": {
-        "provider_name": "local",
-        "api_key": "sk-none",
-        "base_url": "http://127.0.0.1:8010/v1",
-        "model": "GLM-5.3-Flash",
-        "vision_enabled": true
+    "models": {
+        "gemma": {
+            "provider_name": "local",
+            "api_key": "sk-none",
+            "base_url": "http://127.0.0.1:52625/v1",
+            "model": "gemma4-it:12b",
+            "vision_enabled": true,
+            "timeout": 180.0
+        },
+        "glm": {
+            "provider_name": "local",
+            "api_key": "sk-none",
+            "base_url": "http://127.0.0.1:8010/v1",
+            "model": "GLM-5.3-Flash",
+            "vision_enabled": true,
+            "timeout": 180.0
+        }
     }
 }
 ```
 
-* **`provider_name`** *(String)*: An informational label for your setup (e.g., `"local"`, `"groq"`, `"openrouter"`).
-* **`api_key`** *(String)*: The authentication token for your provider. Set this to `"sk-none"` for local offline servers.
-* **`base_url`** *(String)*: The target network endpoint of your inference server. Ensure it points to the base directory of the completions route (usually ends with `/v1`).
-* **`model`** *(String)*: The precise model identifier string passed in the payload API request.
-* **`vision_enabled`** *(Boolean)*: `true` or `false`. When enabled, Assistant allows binary base64 vision payloads via the screen/clipboard mechanics.
+* **`default`** *(String)*: The default model identifier from the `models` dictionary that Assistant starts with upon launching.
 * **`history_duration_minutes`** *(Integer/Float)*: Controls memory management. Drops historical message logs from the sliding context window if the file modification timestamp exceeds this duration.
-* **`timeout`** *(Float, Optional)*: Request read timeout in seconds for LLM generation (defaults to `180.0`). Prevents premature disconnection when processing heavy contexts or extensive prefill sequences.
 * **`system_context`** *(String)*: Absolute path pointing to a persistent system context profile markdown file.
-* **`fallback`** *(Object, Optional)*: Secondary LLM configuration (`base_url`, `model`, `api_key`, `vision_enabled`). If the primary model endpoint is unreachable or times out, Assistant automatically routes requests through the fallback model and updates the active model indicator in the UI.
+* **`models`** *(Object)*: Key-value map of available models. Each entry contains:
+  * **`model`** / **`name`** *(String)*: Precise model identifier string passed to the completion endpoint.
+  * **`base_url`** *(String)*: Endpoint of the OpenAI-compatible inference server.
+  * **`api_key`** *(String)*: Authentication token (`"sk-none"` for local servers).
+  * **`vision_enabled`** *(Boolean)*: Enables base64 vision payloads via screen/clipboard capture.
+  * **`timeout`** *(Float, Optional)*: Request timeout in seconds (defaults to `180.0`). Prevents unexpected cuts during large context prefill sequences.
+  * **`provider_name`** *(String, Optional)*: Informational label (e.g., `"local"`, `"groq"`).
+
+> [!NOTE]
+> **Backward Compatibility**: If you use the classic format with a single `model` and `fallback`, Assistant automatically maps them into the models catalog as `primary` and `fallback`.
 
 ---
 
@@ -268,6 +279,7 @@ Assistant features a clean Material Design GUI styled with **SicOS Nerd Font** i
 
 ### Built-in Slash Commands & Shortcuts
 You can type the following commands directly into the prompt box:
+* **/model**: Lists all available configured models indicating which one is active, or toggles to the next model in the list. Use `/model <name>` (e.g. `/model glm`) to switch directly to a specific model.
 * **/new** or **/reset**: Resets the current conversation context, wipes the chat memory file, and starts a fresh session.
 * **/clear**: Clears messages from the screen and purges context history.
 * **/help**: Displays an interactive help modal with quick command tips.
