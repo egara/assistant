@@ -832,6 +832,61 @@ def _get_desktop_cache():
     return _DESKTOP_CACHE
 
 
+def _resolve_fuzzy_target_path(raw_target):
+    """Clean and resolve file paths even if the LLM hallucinated tildes or abbreviated intermediate folders."""
+    if not raw_target:
+        return ""
+    target_clean = raw_target.strip().strip("'\"`")
+    if target_clean.startswith(("http://", "https://")):
+        return target_clean
+
+    home = os.path.expanduser("~")
+    # Fix broken concatenation like /home/egarcia~/ or /home/username/~/
+    if target_clean.startswith(f"{home}~"):
+        target_clean = home + target_clean[len(home) + 1:]
+    elif target_clean.startswith(f"{home}/~"):
+        target_clean = home + target_clean[len(home) + 2:]
+
+    expanded = os.path.expanduser(target_clean)
+    if os.path.exists(expanded):
+        return expanded
+
+    # If Gemma or another LLM abbreviated the path (e.g. /Insync/..._Google Drive_/Documentos/cartera.ods)
+    filename = os.path.basename(expanded).strip("_*` \t")
+    if filename and not filename.startswith("."):
+        candidates = []
+        path_lower = target_clean.lower()
+        for root, dirs, files in os.walk(home):
+            # Prune noisy / heavy directories
+            dirs[:] = [
+                d for d in dirs
+                if not d.startswith(".") and d not in (
+                    "node_modules", "target", "build", "dist", ".cache", ".git"
+                )
+            ]
+            if filename in files:
+                full_cand = os.path.join(root, filename)
+                candidates.append(full_cand)
+                if len(candidates) >= 5:
+                    break
+        if len(candidates) == 1:
+            return candidates[0]
+        elif len(candidates) > 1:
+            # Score candidates based on folder tokens mentioned in the prompt path
+            tokens = [t.strip("_*` \t").lower() for t in target_clean.replace("...", "/").split("/") if len(t) > 2]
+            best_cand = candidates[0]
+            max_score = -1
+            for cand in candidates:
+                cand_lower = cand.lower()
+                score = sum(1 for tok in tokens if tok in cand_lower)
+                if score > max_score:
+                    max_score = score
+                    best_cand = cand
+            return best_cand
+
+    return expanded
+
+
 def open_application(app, target=""):
     """Universally launch any application with optional target (file, directory, URL).
     Prioritizes xdg-open for files when the specified app is not installed or when opening files/URLs.
@@ -840,17 +895,12 @@ def open_application(app, target=""):
         app_clean = (app or "").strip().lower()
         target_str = (target or "").strip()
 
-        # Resolve target argument (expand ~ and handle URLs or local paths)
+        # Resolve target argument (cleaning tildes, markdown ellipses, or truncated paths)
         target_arg = ""
-        is_target_url = False
-        target_path_expanded = ""
+        resolved_target = ""
         if target_str:
-            if target_str.startswith("http://") or target_str.startswith("https://"):
-                is_target_url = True
-                target_arg = f"'{target_str}'"
-            else:
-                target_path_expanded = os.path.expanduser(target_str)
-                target_arg = f"'{target_path_expanded}'"
+            resolved_target = _resolve_fuzzy_target_path(target_str)
+            target_arg = f"'{resolved_target}'"
 
         # Map common aliases to real binary names
         aliases = {
