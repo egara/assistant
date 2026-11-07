@@ -851,13 +851,31 @@ def _resolve_fuzzy_target_path(raw_target):
     if os.path.exists(expanded):
         return expanded
 
-    # If Gemma or another LLM abbreviated the path (e.g. /Insync/..._Google Drive_/Documentos/cartera.ods)
+    # If Gemma or another LLM abbreviated the path or simplified the filename (e.g. Mardom.mp3 instead of 'Mardom ft... .mp3')
     filename = os.path.basename(expanded).strip("_*` \t")
-    if filename and not filename.startswith("."):
-        candidates = []
-        path_lower = target_clean.lower()
+    name_stem, ext = os.path.splitext(filename)
+
+    # Determine smartest search root: if path provided a valid folder hint (like ~/Downloads), search there first!
+    parent_hint = os.path.dirname(expanded)
+    search_root = parent_hint if (parent_hint and os.path.exists(parent_hint) and parent_hint != home) else home
+
+    candidates = []
+    # 1. First pass: exact filename match
+    for root, dirs, files in os.walk(search_root):
+        dirs[:] = [
+            d for d in dirs
+            if not d.startswith(".") and d not in (
+                "node_modules", "target", "build", "dist", ".cache", ".git"
+            )
+        ]
+        if filename in files:
+            candidates.append(os.path.join(root, filename))
+            if len(candidates) >= 5:
+                break
+
+    # If not found in parent hint, scan home for exact filename
+    if not candidates and search_root != home:
         for root, dirs, files in os.walk(home):
-            # Prune noisy / heavy directories
             dirs[:] = [
                 d for d in dirs
                 if not d.startswith(".") and d not in (
@@ -865,24 +883,47 @@ def _resolve_fuzzy_target_path(raw_target):
                 )
             ]
             if filename in files:
-                full_cand = os.path.join(root, filename)
-                candidates.append(full_cand)
+                candidates.append(os.path.join(root, filename))
                 if len(candidates) >= 5:
                     break
-        if len(candidates) == 1:
-            return candidates[0]
-        elif len(candidates) > 1:
-            # Score candidates based on folder tokens mentioned in the prompt path
-            tokens = [t.strip("_*` \t").lower() for t in target_clean.replace("...", "/").split("/") if len(t) > 2]
-            best_cand = candidates[0]
-            max_score = -1
-            for cand in candidates:
-                cand_lower = cand.lower()
-                score = sum(1 for tok in tokens if tok in cand_lower)
-                if score > max_score:
-                    max_score = score
-                    best_cand = cand
-            return best_cand
+
+    # 2. Second pass: Substring / stem matching (e.g. user/LLM says 'Mardom.mp3' for 'Mardom ft Miss Blanche... .mp3')
+    if not candidates and name_stem and len(name_stem) >= 3:
+        for scan_dir in ([search_root] if search_root == home else [search_root, home]):
+            for root, dirs, files in os.walk(scan_dir):
+                dirs[:] = [
+                    d for d in dirs
+                    if not d.startswith(".") and d not in (
+                        "node_modules", "target", "build", "dist", ".cache", ".git"
+                    )
+                ]
+                for f in files:
+                    f_stem, f_ext = os.path.splitext(f)
+                    if ext and f_ext.lower() != ext.lower():
+                        continue
+                    if name_stem.lower() in f_stem.lower():
+                        candidates.append(os.path.join(root, f))
+                        if len(candidates) >= 10:
+                            break
+                if candidates:
+                    break
+            if candidates:
+                break
+
+    if len(candidates) == 1:
+        return candidates[0]
+    elif len(candidates) > 1:
+        # Score candidates based on folder/name tokens mentioned in the prompt path
+        tokens = [t.strip("_*` \t").lower() for t in target_clean.replace("...", "/").split("/") if len(t) > 2]
+        best_cand = candidates[0]
+        max_score = -1
+        for cand in candidates:
+            cand_lower = cand.lower()
+            score = sum(1 for tok in tokens if tok in cand_lower)
+            if score > max_score:
+                max_score = score
+                best_cand = cand
+        return best_cand
 
     return expanded
 
