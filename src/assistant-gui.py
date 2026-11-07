@@ -1833,18 +1833,25 @@ class AIGeneratorThread(QThread):
                 temp_messages.append(
                     {
                         "role": "user",
-                        "content": f"[SYSTEM RESULTS]:\n{tool_results_text}\nReply directly based on these results. If quoting written content, quote it exactly without paraphrasing.",
+                        "content": (
+                            f"[SYSTEM RESULTS]:\n{tool_results_text}\n"
+                            "Reply directly based on these results. "
+                            "CRITICAL: If the user asked you to play, open, or run something and you just located the file, "
+                            "you MUST invoke `open_application(app='...', target='...')` in this turn to actually open it! "
+                            "Do NOT just reply saying you found it or that you are going to play it without executing the tool."
+                        ),
                     }
                 )
                 final_content = ""
                 bubble_created = False
 
-                # Turn 2 API Call (Processing Tool Results)
+                # Turn 2 API Call (Processing Tool Results, allowing chained tool invocation!)
                 api_kwargs_t2 = {
                     "model": active_model,
                     "messages": temp_messages,
                     "temperature": 0.0,
                     "stream": True,
+                    "tools": tools,
                 }
 
                 try:
@@ -1864,14 +1871,40 @@ class AIGeneratorThread(QThread):
 
                 buffer = ""
                 last_emit = time.time()
+                t2_tool_calls = []
 
                 for chunk in stream_response:
                     if self._is_stopped:
                         break
-                    if chunk.choices[0].delta.content:
+                    delta = chunk.choices[0].delta
+                    if delta.tool_calls:
+                        for tc in delta.tool_calls:
+                            idx = (
+                                tc.index
+                                if tc.index is not None
+                                else max(0, len(t2_tool_calls) - 1)
+                            )
+                            while len(t2_tool_calls) <= idx:
+                                t2_tool_calls.append(
+                                    {
+                                        "id": "",
+                                        "type": "function",
+                                        "function": {"name": "", "arguments": ""},
+                                    }
+                                )
+                            if tc.id:
+                                t2_tool_calls[idx]["id"] = tc.id
+                            if tc.function:
+                                if tc.function.name:
+                                    t2_tool_calls[idx]["function"]["name"] = tc.function.name
+                                if tc.function.arguments:
+                                    t2_tool_calls[idx]["function"]["arguments"] += (
+                                        tc.function.arguments
+                                    )
+
+                    if delta.content:
                         clean_text = (
-                            chunk.choices[0]
-                            .delta.content.replace('<|"|>', '"')
+                            delta.content.replace('<|"|>', '"')
                             .replace("<|/|>", "")
                             .replace("execute_command", "")
                         )
@@ -1897,9 +1930,33 @@ class AIGeneratorThread(QThread):
                     self.finished_signal.emit("")
                     return
 
+                # If the model invoked an action in Turn 2 (e.g. open_application after find), execute it!
+                if t2_tool_calls:
+                    for call in t2_tool_calls:
+                        tool_name = call["function"]["name"]
+                        try:
+                            args = json.loads(call["function"]["arguments"])
+                        except:
+                            args = {}
+                        self.sys_message_signal.emit("sys", f"󰑮 Running {tool_name}...")
+                        if tool_name == "open_application":
+                            open_application(args.get("app", ""), args.get("target", ""))
+                        elif tool_name == "execute_command":
+                            self.execute_command_safe(args.get("command", ""))
+                        elif tool_name == "manage_desktop":
+                            manage_desktop(
+                                args.get("action", ""),
+                                args.get("target", ""),
+                                args.get("window_address", ""),
+                            )
+
                 if final_content.strip():
                     self.messages.append(
                         {"role": "assistant", "content": final_content}
+                    )
+                elif t2_tool_calls:
+                    self.messages.append(
+                        {"role": "assistant", "content": "Hecho.", "is_silent": True}
                     )
                 full_content = final_content
             else:
