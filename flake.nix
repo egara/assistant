@@ -94,6 +94,10 @@
                 if [ -f "src/hyprland_knowledge.json" ]; then
                   cp src/hyprland_knowledge.json $out/share/assistant/hyprland_knowledge.json
                 fi
+                if [ -d "src/knowledge" ]; then
+                  mkdir -p $out/share/assistant/knowledge
+                  cp -r src/knowledge/* $out/share/assistant/knowledge/
+                fi
 
                 cp ${whisperSmall} $out/share/assistant/models/ggml-small.bin
 
@@ -116,6 +120,18 @@
                 if [ ! -f "$HOME/.local/share/assistant/hyprland_knowledge.json" ] && [ -f "@out@/share/assistant/hyprland_knowledge.json" ]; then
                   cp "@out@/share/assistant/hyprland_knowledge.json" "$HOME/.local/share/assistant/hyprland_knowledge.json"
                   chmod 644 "$HOME/.local/share/assistant/hyprland_knowledge.json"
+                fi
+
+                # Initialize user mutable SicOS modular knowledge base in ~/.config/assistant/knowledge
+                if [ -d "@out@/share/assistant/knowledge" ]; then
+                  mkdir -p "$HOME/.config/assistant/knowledge"
+                  for f in "@out@"/share/assistant/knowledge/*; do
+                    bname=$(basename "$f")
+                    if [ ! -f "$HOME/.config/assistant/knowledge/$bname" ]; then
+                      cp "$f" "$HOME/.config/assistant/knowledge/$bname"
+                      chmod 644 "$HOME/.config/assistant/knowledge/$bname"
+                    fi
+                  done
                 fi
 
                 export PATH="@path@:$PATH"

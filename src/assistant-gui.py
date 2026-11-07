@@ -67,6 +67,22 @@ system_knowledge_paths = [
     os.path.abspath(os.path.join(_base_dir, "..", "share", "assistant", "hyprland_knowledge.json")),
 ]
 
+# Modular knowledge directory paths (Config directory first, with factory fallback)
+KNOWLEDGE_DIR = os.path.join(CONFIG_DIR, "knowledge")
+SYSTEM_KNOWLEDGE_DIR = os.path.join(_base_dir, "knowledge")
+os.makedirs(KNOWLEDGE_DIR, exist_ok=True)
+
+# Seed user modular knowledge files from factory if they do not exist yet
+if os.path.exists(SYSTEM_KNOWLEDGE_DIR):
+    for f_name in os.listdir(SYSTEM_KNOWLEDGE_DIR):
+        src_k_file = os.path.join(SYSTEM_KNOWLEDGE_DIR, f_name)
+        dst_k_file = os.path.join(KNOWLEDGE_DIR, f_name)
+        if os.path.isfile(src_k_file) and not os.path.exists(dst_k_file):
+            try:
+                shutil.copyfile(src_k_file, dst_k_file)
+            except Exception as e:
+                print(f"[Knowledge] Notice: could not seed {f_name}: {e}")
+
 SYSTEM_KNOWLEDGE_FILE = None
 for path in system_knowledge_paths:
     if os.path.exists(path):
@@ -512,6 +528,23 @@ tools = [
             },
         },
     },
+    {
+        "type": "function",
+        "function": {
+            "name": "get_system_knowledge",
+            "description": "Consult SicOS modular knowledge or live Hyprland shortcuts. Available topics: 'index' (overview), 'hardware' (audio/volume with wpctl, brightness with brightnessctl, monitors), 'apps' (installed tools and whether GUI/TUI), 'hyprland' (desktop architecture & layouts), or 'shortcuts' (active keyboard shortcuts from compositor).",
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "topic": {
+                        "type": "string",
+                        "description": "Topic to consult: 'index', 'hardware', 'apps', 'hyprland', or 'shortcuts'.",
+                    }
+                },
+                "required": ["topic"],
+            },
+        },
+    },
 ] + mcp_tools
 
 
@@ -943,7 +976,13 @@ def execute_command(command):
         res = subprocess.run(
             command, shell=True, capture_output=True, text=True, timeout=10
         )
-        return (res.stdout + res.stderr)[:3000] or "Success with no output."
+        combined = (res.stdout + res.stderr).strip()
+        if not combined:
+            if res.returncode == 0:
+                return "Command executed successfully with no errors (exit code 0)."
+            else:
+                return f"Command finished with exit code {res.returncode}."
+        return combined[:3000]
     except subprocess.TimeoutExpired:
         return f"Error: Command timed out after 10 seconds. If launching a GUI app, please specify running it in the background."
     except Exception as e:
@@ -1129,6 +1168,95 @@ def discover_and_learn_action(action, version):
         print(f"[Hyprland Auto-Discovery] Error: {e}")
 
     return None
+
+
+def get_sicos_shortcuts():
+    """Retrieve and format active Hyprland keybindings dynamically."""
+    try:
+        res = subprocess.run(["hyprctl", "binds", "-j"], capture_output=True, text=True, timeout=3)
+        if res.returncode != 0:
+            return "Could not retrieve keybindings from hyprctl."
+        binds = json.loads(res.stdout)
+        lines = []
+        for b in binds:
+            if not b.get("has_description") or "mouse" in b.get("dispatcher", "").lower():
+                continue
+            m = b.get("modmask", 0)
+            mods = []
+            if (m // 64) % 2 >= 1:
+                mods.append("Super")
+            if (m // 4) % 2 >= 1:
+                mods.append("Ctrl")
+            if (m // 8) % 2 >= 1:
+                mods.append("Alt")
+            if (m // 1) % 2 >= 1:
+                mods.append("Shift")
+            key = b.get("key", "")
+            if key in ("SUPER_L", "SUPER_R"):
+                key = "Super"
+            elif not key:
+                key = f"code:{b.get('keycode')}"
+            
+            if key not in mods:
+                combo = "+".join(mods + [key]) if mods else key
+            else:
+                combo = "+".join(mods)
+            desc = b.get("description", "Unknown action")
+            lines.append(f"- **{combo}**: {desc}")
+        
+        unique_lines = sorted(list(set(lines)))
+        return "# Hyprland Keybindings (Live from Compositor)\n\n" + "\n".join(unique_lines)
+    except Exception as e:
+        return f"Error reading shortcuts: {e}"
+
+
+def get_system_knowledge(topic="index"):
+    """Query modular Markdown knowledge base or live shortcuts."""
+    topic_clean = topic.strip().lower()
+    if topic_clean in ("shortcuts", "binds", "keybindings"):
+        return get_sicos_shortcuts()
+
+    # Topic file mapping
+    valid_topics = {
+        "index": "index.md",
+        "hardware": "hardware.md",
+        "audio": "hardware.md",
+        "sound": "hardware.md",
+        "volume": "hardware.md",
+        "brightness": "hardware.md",
+        "monitors": "hardware.md",
+        "apps": "apps.md",
+        "applications": "apps.md",
+        "tools": "apps.md",
+        "hyprland": "hyprland.md",
+        "desktop": "hyprland.md",
+        "windows": "hyprland.md",
+    }
+
+    target_filename = valid_topics.get(topic_clean, f"{topic_clean}.md")
+    
+    # 1. Check user knowledge (~/.config/assistant/knowledge/)
+    user_file = os.path.join(KNOWLEDGE_DIR, target_filename)
+    if os.path.exists(user_file):
+        try:
+            with open(user_file, "r", encoding="utf-8") as f:
+                return f.read().strip()
+        except Exception as e:
+            return f"Error reading {user_file}: {e}"
+
+    # 2. Check factory knowledge (src/knowledge/)
+    factory_file = os.path.join(SYSTEM_KNOWLEDGE_DIR, target_filename)
+    if os.path.exists(factory_file):
+        try:
+            with open(factory_file, "r", encoding="utf-8") as f:
+                return f.read().strip()
+        except Exception as e:
+            return f"Error reading {factory_file}: {e}"
+
+    return (
+        f"Topic '{topic}' not found. Available topics: 'index', 'hardware' (audio/brightness), "
+        "'apps' (installed tools), 'hyprland' (desktop & layouts), 'shortcuts' (live keybindings)."
+    )
 
 
 def manage_desktop(action, target="", window_address=""):
@@ -1535,13 +1663,22 @@ class AIGeneratorThread(QThread):
                         # If manage_desktop failed, do not silence so the user gets notified
                         if not results.startswith("Success"):
                             all_tools_silent = False
+                    elif tool_name == "get_system_knowledge":
+                        all_tools_silent = False
+                        results = get_system_knowledge(args.get("topic", "index"))
                     elif tool_name == "execute_command":
                         cmd = args.get("command", "")
                         results = self.execute_command_safe(cmd)
-                        # Silence if it launched an application in the background or is a successful hyprctl command
+                        # Silence if it launched an application in the background, is a successful hyprctl command,
+                        # or is a quick hardware/multimedia toggle (wpctl, brightnessctl) that executed cleanly
                         is_app_launch = results.startswith("Application launched in background:")
-                        is_hyprctl_success = cmd.strip().startswith("hyprctl") and "error" not in results.lower()
-                        if not (is_app_launch or is_hyprctl_success):
+                        cmd_clean = cmd.strip()
+                        is_hyprctl_success = cmd_clean.startswith("hyprctl") and "error" not in results.lower()
+                        is_hardware_control_success = (
+                            (cmd_clean.startswith("wpctl") or cmd_clean.startswith("brightnessctl"))
+                            and "error" not in results.lower()
+                        )
+                        if not (is_app_launch or is_hyprctl_success or is_hardware_control_success):
                             all_tools_silent = False
                     elif tool_name in mcp_manager.tools:
                         all_tools_silent = False
@@ -1726,12 +1863,15 @@ class Backend(QObject):
 
     def _build_system_prompt(self):
         system_content = (
-            "You are Assistant, an agentic AI desktop assistant with direct system access running on Hyprland.\n"
+            "You are Assistant, an agentic AI desktop assistant with direct system access running on SicOS (NixOS + Hyprland).\n"
             "- CRITICAL RULE FOR FILES: When the user asks to create, write, modify, read, or replace content in a file, "
             "you MUST call `write_file`, `read_file`, `replace_in_file`, or `execute_command`. "
             "NEVER claim or pretend you created or edited a file in your response text without invoking the corresponding tool first.\n"
             "- CRITICAL RULE FOR APPLICATIONS: When the user asks to open or launch an application or file (e.g. 'abre yazi en Downloads', 'abre chrome', 'abre zed en mi proyecto'), "
             "you MUST call `open_application(app='...', target='...')`. Do NOT use execute_command for launching applications.\n"
+            "- CRITICAL RULE FOR HARDWARE & SYSTEM: Audio volume uses `wpctl set-volume @DEFAULT_AUDIO_SINK@ <level>` (never amixer/pactl). "
+            "Screen brightness uses `brightnessctl set <level>`. When in doubt or to discover installed apps, layouts, or keybindings, "
+            "call `get_system_knowledge(topic='index'|'hardware'|'apps'|'hyprland'|'shortcuts')`.\n"
             "- For Hyprland workspace and window actions, use `manage_desktop`.\n"
             "- Keep answers concise, natural, and conversational."
         )

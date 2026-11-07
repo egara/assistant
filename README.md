@@ -319,7 +319,8 @@ Unlike basic chat interfaces, Assistant parses your prompt and dynamically decid
 7. `obsidian_search` / `obsidian_read` / `obsidian_write`: Manages notes using the encrypted Obsidian Local REST API.
 8. `web_search(query)`: Searches the web prioritizing local SearXNG (via MCP) with automatic DuckDuckGo fallback.
 9. `execute_command(command)`: Runs local bash pipelines (with detached background execution for GUI apps).
-10. **Dynamic MCP Tools**: Any additional tools exposed by configured MCP servers (e.g. `current_time`, `convert_time`, `searxng_web_search`, etc.).
+10. `get_system_knowledge(topic)`: Consults SicOS modular system knowledge or live Hyprland shortcuts. Topics include `'index'`, `'hardware'` (audio volume with `wpctl`, brightness with `brightnessctl`, display scaling), `'apps'` (installed desktop tools & TUIs), `'hyprland'` (window management & layouts), or `'shortcuts'` (live compositor keybindings via `hyprctl binds`).
+11. **Dynamic MCP Tools**: Any additional tools exposed by configured MCP servers (e.g. `current_time`, `convert_time`, `searxng_web_search`, etc.).
 
 ### Execution Safety Guardrails & Threading Isolation
 Assistant classifies all system bash commands before executing them:
