@@ -16,7 +16,14 @@ All desktop applications should be opened using `open_application(app='...', tar
 - **`neovim`** / **`nvim`** (TUI): Modern extensible vim editor in terminal.
 - **`obsidian`** (GUI): Markdown knowledge base and note-taking vault.
 
-## 4. Terminal & System Monitors
+## 4. Media & Audio/Video Players
+- **`xdg-open`** (System Default): The primary and recommended method to open any document, audio file, or video file. SicOS automatically maps file types to default apps (`qmmp` for MP3/audio, `vlc` for video, `papers` for PDF, `feh` for images, `zed` for code/text).
+- **`qmmp`** (GUI): Default audio and music player (Winamp-like lightweight player configured for `audio/mpeg`).
+- **`vlc`** (GUI): Default media player for video streams and movie files (`video/mp4`, `video/webm`, `video/x-matroska`).
+- **`pw-play`** (CLI): Native PipeWire command-line audio player.
+- **Notice**: `mpv` is NOT installed. To open/play media or files, call `open_application(app='xdg-open', target='<file_path>')` or `open_application(app='qmmp'|'vlc', target='<file_path>')`.
+
+## 5. Terminal & System Monitors
 - **`kitty`** (GUI): Default GPU-accelerated terminal emulator.
 - **`btop`** (TUI): System resource and process monitor.
 - **`nvtop`** (TUI): GPU resource monitor.

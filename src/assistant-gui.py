@@ -465,13 +465,13 @@ tools = [
         "type": "function",
         "function": {
             "name": "open_application",
-            "description": "Open or launch any desktop application or terminal tool (e.g. yazi, chrome, firefox, nautilus, zed, btop). Terminal-based apps are automatically and safely launched inside a terminal, and all applications run seamlessly under uwsm. You can optionally provide a target path or URL to open.",
+            "description": "Open or launch any desktop application, file, or URL. When opening a file or playing media (audio/video), pass the file path in 'target'; if 'app' is 'xdg-open' or an uninstalled tool (e.g. mpv), it automatically opens with your configured system default application (e.g. qmmp for audio, vlc for video). Terminal-based apps automatically run inside kitty, and all apps launch under uwsm.",
             "parameters": {
                 "type": "object",
                 "properties": {
                     "app": {
                         "type": "string",
-                        "description": "Application name or executable (e.g. 'yazi', 'google-chrome', 'firefox', 'nautilus', 'zed', 'kitty').",
+                        "description": "Application name (e.g. 'xdg-open', 'yazi', 'google-chrome', 'firefox', 'nautilus', 'zed', 'qmmp', 'vlc'). Use 'xdg-open' or leave default when opening files with their default association.",
                     },
                     "target": {
                         "type": "string",
@@ -833,13 +833,26 @@ def _get_desktop_cache():
 
 
 def open_application(app, target=""):
-    """Universally launch any application with optional target (file, directory, URL)."""
+    """Universally launch any application with optional target (file, directory, URL).
+    Prioritizes xdg-open for files when the specified app is not installed or when opening files/URLs.
+    """
     try:
         app_clean = (app or "").strip().lower()
-        if not app_clean:
-            return "Error: No application name provided."
+        target_str = (target or "").strip()
 
-        # Map common aliases
+        # Resolve target argument (expand ~ and handle URLs or local paths)
+        target_arg = ""
+        is_target_url = False
+        target_path_expanded = ""
+        if target_str:
+            if target_str.startswith("http://") or target_str.startswith("https://"):
+                is_target_url = True
+                target_arg = f"'{target_str}'"
+            else:
+                target_path_expanded = os.path.expanduser(target_str)
+                target_arg = f"'{target_path_expanded}'"
+
+        # Map common aliases to real binary names
         aliases = {
             "chrome": "google-chrome-stable",
             "google-chrome": "google-chrome-stable",
@@ -847,31 +860,49 @@ def open_application(app, target=""):
             "code": "code",
             "terminal": "kitty",
             "files": "nautilus",
+            "browser": "firefox",
         }
         binary = aliases.get(app_clean, app_clean)
 
+        # Generic requests or missing specific player (e.g. mpv not installed)
+        generic_app_names = {
+            "", "default", "xdg-open", "open", "media", "player", "media_player",
+            "reproductor", "reproduce", "audio", "video", "music", "musica"
+        }
+
+        # Check if the requested binary is actually available on the system PATH or in desktop cache
+        desktop_cache = _get_desktop_cache()
+        is_binary_available = bool(shutil.which(binary)) or (binary in desktop_cache)
+
+        # 1. PRIMARY ROUTE: If opening a file/URL and either the requested app is generic,
+        # or the requested binary does NOT exist on the system (e.g. mpv), route directly via xdg-open.
+        # This respects NixOS xdg.mimeApps.defaultApplications (e.g. qmmp for audio, vlc for video, zed, papers).
+        if target_str and (binary in generic_app_names or not is_binary_available):
+            if shutil.which("xdg-open"):
+                cmd = f"uwsm app -- xdg-open {target_arg}".strip()
+                subprocess.Popen(
+                    cmd,
+                    shell=True,
+                    start_new_session=True,
+                    stdout=subprocess.DEVNULL,
+                    stderr=subprocess.DEVNULL,
+                    stdin=subprocess.DEVNULL,
+                )
+                return f"Application launched in background (via xdg-open): {cmd}"
+
+        # 2. If no target was given and the app is not installed, report clearly
+        if not is_binary_available:
+            return f"Error: Application '{app}' is not installed on this system."
+
         # Check if the app is a TUI app (via desktop entry Terminal=true or common list)
         known_tui = {"yazi", "btop", "htop", "lazygit", "lazyssh", "herdr", "nvtop", "ranger", "neovim", "nvim"}
-        desktop_cache = _get_desktop_cache()
-
         is_terminal_app = binary in known_tui
         if not is_terminal_app:
-            # Check desktop entries
             for name, meta in desktop_cache.items():
                 if binary == name or binary in name:
                     if meta.get("is_terminal"):
                         is_terminal_app = True
                     break
-
-        # Resolve target argument (expand ~ and handle URLs)
-        target_arg = ""
-        if target and target.strip():
-            raw_target = target.strip()
-            if raw_target.startswith("http://") or raw_target.startswith("https://"):
-                target_arg = f"'{raw_target}'"
-            else:
-                expanded = os.path.expanduser(raw_target)
-                target_arg = f"'{expanded}'"
 
         # Build final execution command
         if is_terminal_app:
