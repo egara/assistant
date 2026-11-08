@@ -2707,6 +2707,37 @@ class Backend(QObject):
         wav_file = os.path.join(TEMP_DIR, "voice_reply.wav")
         transcript = ""
 
+        # Validate that the recorded audio contains actual sound and is long enough
+        if not os.path.exists(wav_file):
+            self._handle_no_speech()
+            return
+
+        try:
+            import wave, struct, math
+            with wave.open(wav_file, "rb") as wf:
+                n_frames = wf.getnframes()
+                rate = wf.getframerate()
+                duration = n_frames / float(rate) if rate > 0 else 0
+                raw_data = wf.readframes(n_frames)
+                
+            # If the recording is shorter than 0.4s or empty, treat as no speech
+            if duration < 0.4 or len(raw_data) < 4:
+                logger.info(f"[ASR] Audio too short ({duration:.2f}s), skipping ASR.")
+                self._handle_no_speech()
+                return
+
+            shorts = struct.unpack("<" + "h" * (len(raw_data) // 2), raw_data)
+            rms = math.sqrt(sum(s * s for s in shorts) / len(shorts))
+            logger.info(f"[ASR] Recorded audio: {duration:.2f}s, RMS volume: {rms:.1f}")
+
+            # If the audio is essentially pure silence/background noise (RMS < 120), skip
+            if rms < 120.0:
+                logger.info(f"[ASR] Audio energy too low ({rms:.1f} < 120), ignoring silence.")
+                self._handle_no_speech()
+                return
+        except Exception as e:
+            logger.warning(f"[ASR] Error checking audio energy: {e}")
+
         # Check ASR configuration (e.g. FastFlowLM / OpenAI-compatible endpoint)
         asr_conf = VOICE_CONF.get("asr", {})
         asr_enabled = asr_conf.get("enabled", True) if isinstance(asr_conf, dict) else False
@@ -2789,11 +2820,16 @@ class Backend(QObject):
                 "amaraorg",
                 "thankyouverymuch",
                 "merci",
+                "gracias",
+                "muchasgracias",
+                "graciasporverelvideo",
+                "graciasporver",
             ]
             if (
-                any(h in clean_no_spaces for h in hallucinations)
-                and len(transcript.split()) <= 5
+                any(clean_no_spaces == h or clean_no_spaces == h + "video" for h in hallucinations)
+                or (any(h in clean_no_spaces for h in hallucinations) and len(transcript.split()) <= 4)
             ):
+                logger.info(f"[ASR] Filtered out Whisper silence hallucination: '{transcript}'")
                 transcript = ""
 
         if transcript:
@@ -2822,13 +2858,16 @@ class Backend(QObject):
                 return
             self.submit_query(transcript)
         else:
-            self.statusChanged.emit("Idle", "#828c99")
-            self.messageAdded.emit("sys", "No speech detected.")
-            self.is_voice_mode = False
-            self.voiceStateChanged.emit(False)
-            self._input_enabled = True
-            self.inputStateChanged.emit(True)
-            self.stopButtonStateChanged.emit(False)
+            self._handle_no_speech()
+
+    def _handle_no_speech(self):
+        self.statusChanged.emit("Idle", "#828c99")
+        self.messageAdded.emit("sys", "No speech detected.")
+        self.is_voice_mode = False
+        self.voiceStateChanged.emit(False)
+        self._input_enabled = True
+        self.inputStateChanged.emit(True)
+        self.stopButtonStateChanged.emit(False)
 
     def submit_query(self, query):
         self._input_enabled = False
