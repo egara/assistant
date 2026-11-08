@@ -614,19 +614,18 @@ def resolve_tools_for_query(user_query, recent_context="", base_url=""):
             "category": {
                 "type": "choice",
                 "instructions": (
-                    "Determine which specialized tool category is required to fulfill the user request. "
-                    "Select 'conversational' if the request is standard conversation, chit-chat, programming/coding advice, "
-                    "text explanation, greeting, or answering general knowledge without needing any system tools."
+                    "Determina qué categoría de herramientas del sistema es requerida para satisfacer la petición del usuario en español. "
+                    "Elige 'conversational' si es charla informal, preguntas teóricas, saludos o explicaciones que no necesitan herramientas."
                 ),
                 "criteria": {
-                    "conversational": "Standard dialogue, greetings, explanations, programming questions, translation, or philosophical thoughts that require no tools.",
-                    "datetime": "Specifically asking only for the current time, date, day of the week, month, year, or timezone.",
-                    "desktop": "Hyprland desktop management: switching workspaces, closing, moving, floating, pinning, or toggling fullscreen windows, or checking system knowledge/shortcuts.",
-                    "apps": "Launching desktop or terminal applications (e.g. 'open browser', 'abre spotify', 'launch kitty', 'abre obsidian').",
-                    "filesystem": "Reading, creating, modifying files or executing bash system commands in the terminal (including finding files based on dates/times).",
-                    "notes": "Accessing, searching, reading, or writing notes in Obsidian vault.",
-                    "weather": "Checking live weather conditions, temperature, or rain forecasts for specific locations.",
-                    "web_search": "Searching the live internet for news, current events, web articles, real-time facts, documentation, or links.",
+                    "conversational": "Conversación informal, charla, respuestas teóricas, saludos, opiniones o dudas generales sin herramientas.",
+                    "datetime": "Consultar la hora actual, qué hora es, qué día es hoy, la fecha actual, mes, año o zona horaria.",
+                    "desktop": "Gestión de ventanas y espacios de trabajo en Hyprland: cerrar ventanas (e.g. cierra firefox/chrome), alternar flotante (flota chrome), mover ventana, pantalla completa o consultar atajos de teclado.",
+                    "apps": "Abrir o reproducir aplicaciones o canciones (e.g. reproduce pura dinamita, abre spotify, abre navegador).",
+                    "filesystem": "Buscar archivos en el disco, consultar o listar carpetas locales (/home, Downloads, extensiones .ods, .pdf, .txt, canciones descargadas), leer o escribir archivos, o ejecutar comandos bash.",
+                    "notes": "Buscar o leer notas exclusivamente dentro de las notas de la aplicación Obsidian.",
+                    "weather": "Consultar la previsión meteorológica, clima, lluvia o temperatura para ciudades o regiones.",
+                    "web_search": "Buscar noticias de última hora o información en internet a través de la web.",
                 },
             },
             "needs_datetime": {
