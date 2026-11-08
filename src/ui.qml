@@ -550,6 +550,53 @@ ApplicationWindow {
                             }
                         }
                     }
+                    Rectangle {
+                        width: parent.width
+                        height: 1
+                        color: "#232a38"
+                    }
+
+                    // About / Version Item
+                    Rectangle {
+                        width: parent.width
+                        height: 30
+                        radius: 8
+                        color: aboutMouse.containsMouse ? "#1e2638" : "transparent"
+
+                        Row {
+                            anchors.fill: parent
+                            anchors.leftMargin: 10
+                            anchors.rightMargin: 10
+                            spacing: 8
+
+                            Text {
+                                text: "󰘳"
+                                color: "#59c2ff"
+                                font.family: window.monoFont
+                                font.pixelSize: 13
+                                anchors.verticalCenter: parent.verticalCenter
+                            }
+
+                            Text {
+                                text: "About (v1.0.0)"
+                                color: "#828c99"
+                                font.family: window.monoFont
+                                font.pixelSize: 11
+                                anchors.verticalCenter: parent.verticalCenter
+                            }
+                        }
+
+                        MouseArea {
+                            id: aboutMouse
+                            anchors.fill: parent
+                            hoverEnabled: true
+                            cursorShape: Qt.PointingHandCursor
+                            onClicked: {
+                                backend.show_about();
+                                modelPopup.close();
+                            }
+                        }
+                    }
                 }
             }
         }

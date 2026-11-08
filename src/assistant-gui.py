@@ -38,6 +38,7 @@ urllib3.disable_warnings(urllib3.exceptions.InsecureRequestWarning)
 # ==========================================
 # ⚙️ CONFIGURATION & PATH RESOLUTION
 # ==========================================
+APP_VERSION = "1.0.0"
 CONFIG_DIR = os.path.expanduser("~/.config/assistant")
 CONFIG_FILE = os.path.join(CONFIG_DIR, "config.json")
 TEMP_DIR = "/tmp/assistant"
@@ -2096,14 +2097,27 @@ class Backend(QObject):
     def show_help(self):
         """Display available slash commands and shortcuts."""
         help_text = (
-            "󰋖 **Comandos disponibles:**\n\n"
+            f"󰋖 **Comandos disponibles (v{APP_VERSION}):**\n\n"
             "- **/new** o **/reset**: Inicia una nueva sesión desde cero, eliminando el contexto y limpiando el chat.\n"
             "- **/clear**: Limpia los mensajes en pantalla y vacía la memoria de la conversación.\n"
             "- **/model**: Muestra los modelos configurados o alterna al siguiente. Usa `/model <nombre>` para cambiar a uno específico.\n"
+            "- **/about**: Muestra los detalles de versión y arquitectura de Assistant.\n"
             "- **/help**: Muestra esta información de ayuda.\n"
             "- **󰍬 Botón o tecla 'v'**: Pulsa el botón de micrófono o escribe 'v' y pulsa Enter para activar/desactivar el modo de voz."
         )
         self.messageAdded.emit("sys", help_text)
+
+    @pyqtSlot()
+    def show_about(self):
+        """Display version and application info."""
+        about_text = (
+            f"󰘳 **Assistant v{APP_VERSION}**\n\n"
+            "Asistente nativo para el escritorio Hyprland con soporte agéntico, MCP, voz y gestión de ventanas.\n\n"
+            f"- **Versión**: `{APP_VERSION}`\n"
+            "- **Framework**: PyQt6 + QML (Material Design)\n"
+            "- **Pipeline**: FastFlowLM / llama.cpp + Edge-TTS/Piper + Whisper STT"
+        )
+        self.messageAdded.emit("sys", about_text)
 
     @pyqtSlot(str)
     def switch_model(self, target_key=""):
@@ -2218,6 +2232,9 @@ class Backend(QObject):
             return
         elif lower_cmd == "/help":
             self.show_help()
+            return
+        elif lower_cmd == "/about":
+            self.show_about()
             return
         elif lower_cmd == "/model" or lower_cmd.startswith("/model "):
             parts = clean_cmd.split(maxsplit=1)

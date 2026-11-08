@@ -280,6 +280,7 @@ Assistant features a clean Material Design GUI styled with **SicOS Nerd Font** i
 ### Built-in Slash Commands & Shortcuts
 You can type the following commands directly into the prompt box:
 * **/model**: Lists all available configured models indicating which one is active, or toggles to the next model in the list. Use `/model <name>` (e.g. `/model glm`) to switch directly to a specific model.
+* **/about**: Displays application version and architectural details.
 * **/new** or **/reset**: Resets the current conversation context, wipes the chat memory file, and starts a fresh session.
 * **/clear**: Clears messages from the screen and purges context history.
 * **/help**: Displays an interactive help modal with quick command tips.
