@@ -2721,13 +2721,13 @@ class Backend(QObject):
                     headers["Authorization"] = f"Bearer {api_key}"
 
                 req = urllib.request.Request(asr_endpoint, data=body, headers=headers)
-                log_debug(f"[ASR] Sending audio ({len(wav_bytes)} bytes) to ASR endpoint: {asr_endpoint}")
+                logger.info(f"[ASR] Sending audio ({len(wav_bytes)} bytes) to ASR endpoint: {asr_endpoint}")
                 with urllib.request.urlopen(req, timeout=timeout_val) as resp:
                     resp_json = json.loads(resp.read().decode("utf-8"))
                     transcript = resp_json.get("text", "").strip()
-                    log_debug(f"[ASR] Remote transcription successful: '{transcript}'")
+                    logger.info(f"[ASR] Remote transcription successful: '{transcript}'")
             except Exception as e:
-                log_debug(f"[ASR] Remote transcription failed, falling back to local whisper-cli: {e}")
+                logger.warning(f"[ASR] Remote transcription failed, falling back to local whisper-cli: {e}")
                 transcript = ""
 
         # Fallback to local whisper-cli if remote ASR was not used or failed
@@ -2737,7 +2737,7 @@ class Backend(QObject):
                 or "~/.local/share/assistant/models/ggml-small.bin"
             )
             if os.path.exists(whisper_model):
-                log_debug(f"[ASR] Running local whisper-cli with model: {whisper_model}")
+                logger.info(f"[ASR] Running local whisper-cli with model: {whisper_model}")
                 res = subprocess.run(
                     [
                         "whisper-cli",
@@ -2754,7 +2754,7 @@ class Backend(QObject):
                 )
                 transcript = re.sub(r"\[.*?\]", "", res.stdout).strip()
             else:
-                log_debug(f"[ASR] Local whisper model not found: {whisper_model}")
+                logger.warning(f"[ASR] Local whisper model not found: {whisper_model}")
 
         transcript = re.sub(r"\[.*?\]", "", transcript).strip()
 
