@@ -569,7 +569,7 @@ tools = [
 # ==========================================
 DECISION_CONF = config.get("decision_router", {})
 DECISION_ENABLED = DECISION_CONF.get("enabled", False)
-DECISION_ENDPOINT = DECISION_CONF.get("endpoint", "http://127.0.0.1:8000/v1/systemone")
+DECISION_ENDPOINT = DECISION_CONF.get("endpoint", "")
 DECISION_MODEL = DECISION_CONF.get("model", "d3:edge")
 DECISION_TIMEOUT = float(DECISION_CONF.get("timeout", 1.5))
 DECISION_CONFIDENCE_THRESHOLD = float(DECISION_CONF.get("confidence_threshold", 0.60))
@@ -586,14 +586,23 @@ TOOL_CATEGORIES = {
     "web_search": ["web_search"] + [t["function"]["name"] for t in mcp_tools],
 }
 
-def resolve_tools_for_query(user_query, recent_context=""):
+def resolve_tools_for_query(user_query, recent_context="", base_url=""):
     """
     Route incoming user query using the d3:edge decision model (/v1/systemone).
-    Returns filtered subset of tools. Falls back to all tools if disabled,
-    unreachable, or if decision confidence is below threshold.
+    Returns (filtered_tools, decision_info_dict). Falls back to (tools, None)
+    if disabled, unreachable, or if decision confidence is below threshold.
     """
     if not DECISION_ENABLED or not user_query:
-        return tools
+        return tools, None
+
+    # Derive endpoint from base_url if not explicitly provided or if default
+    endpoint = DECISION_ENDPOINT
+    if not endpoint:
+        if base_url:
+            parsed = urllib.parse.urlparse(base_url)
+            endpoint = f"{parsed.scheme}://{parsed.netloc}/v1/systemone"
+        else:
+            endpoint = "http://127.0.0.1:52625/v1/systemone"
 
     payload = {
         "model": DECISION_MODEL,
@@ -637,7 +646,7 @@ def resolve_tools_for_query(user_query, recent_context=""):
 
     try:
         req = urllib.request.Request(
-            DECISION_ENDPOINT,
+            endpoint,
             data=json.dumps(payload).encode("utf-8"),
             headers={"Content-Type": "application/json"},
             method="POST",
@@ -671,6 +680,12 @@ def resolve_tools_for_query(user_query, recent_context=""):
                 )
                 include_datetime = dt_choice or (dt_confidence > 0.40) or has_time_keywords
 
+                info = {
+                    "choice": choice,
+                    "confidence": confidence,
+                    "needs_datetime": include_datetime,
+                }
+
                 print(f"[Decision Router] Choice: '{choice}' (Confidence: {confidence:.2f}) | Needs DateTime: {include_datetime}")
 
                 if choice in TOOL_CATEGORIES and confidence >= DECISION_CONFIDENCE_THRESHOLD:
@@ -679,14 +694,17 @@ def resolve_tools_for_query(user_query, recent_context=""):
                         target_names.add("get_current_time")
 
                     filtered = [t for t in tools if t.get("function", {}).get("name") in target_names]
-                    print(f"[Decision Router] Injected {len(filtered)} tools: {[t['function']['name'] for t in filtered]}.")
-                    return filtered
+                    info["tools_count"] = len(filtered)
+                    info["tools_names"] = [t["function"]["name"] for t in filtered]
+                    print(f"[Decision Router] Injected {len(filtered)} tools: {info['tools_names']}.")
+                    return filtered, info
 
                 print(f"[Decision Router] Confidence too low or unknown choice ('{choice}'). Passing all tools.")
+                return tools, {"choice": choice, "confidence": confidence, "tools_count": len(tools), "fallback": True}
     except Exception as e:
-        print(f"[Decision Router] Bypass/Fallback (Error connecting to {DECISION_ENDPOINT}): {e}")
+        print(f"[Decision Router] Bypass/Fallback (Error connecting to {endpoint}): {e}")
 
-    return tools
+    return tools, None
 
 
 
@@ -1835,9 +1853,24 @@ class AIGeneratorThread(QThread):
                             last_user_query = c
                             break
 
-                routed_tools = resolve_tools_for_query(last_user_query)
+                routed_tools, d_info = resolve_tools_for_query(
+                    last_user_query,
+                    base_url=self.model_config.get("base_url", ""),
+                )
                 if routed_tools:
                     api_kwargs["tools"] = routed_tools
+
+                # Provide user visual feedback if decision router classified the query
+                if d_info and "choice" in d_info:
+                    choice = d_info.get("choice")
+                    conf = d_info.get("confidence", 0.0)
+                    t_count = d_info.get("tools_count", len(routed_tools) if routed_tools else 0)
+                    t_names = d_info.get("tools_names", [])
+                    t_str = f" ({', '.join(t_names)})" if t_names else " (sin tools)"
+                    self.sys_message_signal.emit(
+                        "sys",
+                        f"󰘳 **Router (`{DECISION_MODEL}`):** `{choice}` ({int(conf * 100)}%) 󰁔 {t_count} tools{t_str}"
+                    )
 
             try:
                 response = active_client.chat.completions.create(**api_kwargs)
