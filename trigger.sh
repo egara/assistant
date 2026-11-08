@@ -102,5 +102,9 @@ if [[ "$MODE_VOICE" == true ]]; then
 fi
 
 # Launch PyQt6 GUI with combined context and voice modes
-FINAL_PROMPT="$WIN_CONTEXT$CLIP_CONTEXT$USER_PROMPT"
+if [[ -n "$CLIP_CONTEXT$USER_PROMPT" ]]; then
+    FINAL_PROMPT="$WIN_CONTEXT$CLIP_CONTEXT$USER_PROMPT"
+else
+    FINAL_PROMPT=""
+fi
 assistant-gui "$FINAL_PROMPT" "$LAUNCH_FLAG" &
