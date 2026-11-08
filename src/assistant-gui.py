@@ -613,13 +613,13 @@ def resolve_tools_for_query(user_query, recent_context="", base_url=""):
             "category": {
                 "type": "choice",
                 "instructions": (
-                    "Determina qué categoría de herramientas del sistema es requerida para satisfacer la petición del usuario en español. "
+                    "Determina qué categoría de herramientas del sistema es requerida para satisfacer la petición del usuario en español teniendo en cuenta el contexto previo. "
                     "Elige 'conversational' si es charla informal, preguntas teóricas, saludos o explicaciones que no necesitan herramientas."
                 ),
                 "criteria": {
                     "conversational": "Conversación informal, charla, respuestas teóricas, saludos o explicaciones.",
                     "datetime": "Preguntas exclusivas sobre qué hora es, qué día es hoy, la fecha actual o zona horaria.",
-                    "desktop_and_apps": "Escritorio Hyprland y aplicaciones: abrir o lanzar aplicaciones (abre chrome, lanza kitty), reproducir música o canciones (reproduce pura dinamita), cerrar ventanas, alternar ventanas flotantes (flota chrome) o cambiar de workspace.",
+                    "desktop_and_apps": "Escritorio Hyprland y aplicaciones: abrir o lanzar aplicaciones o archivos (e.g. abrir cartera.ods con libreoffice, abre chrome, lanza kitty, confirmación afirmativa del usuario como 'si' para abrir o ver un archivo), reproducir música o canciones (reproduce pura dinamita), cerrar ventanas, alternar ventanas flotantes (flota chrome) o cambiar de workspace.",
                     "filesystem": "Operaciones con archivos y terminal: buscar archivos en el disco (/home, extensiones .ods, .pdf), listar carpetas (lista canciones en descargas/Downloads), leer o escribir archivos, o ejecutar comandos bash.",
                     "notes": "Buscar o leer notas en la aplicación Obsidian.",
                     "weather": "Previsión del tiempo, lluvia, temperatura o clima meteorológico en ciudades o regiones (e.g. que tiempo hara en leon).",
@@ -1841,17 +1841,25 @@ class AIGeneratorThread(QThread):
 
             # Only inject the tools schema if the model is processing text-only context
             if not has_image:
-                # Extract the last user message text for semantic decision routing
+                # Extract the last user message text and previous assistant context for semantic decision routing
                 last_user_query = ""
-                for msg in reversed(temp_messages):
-                    if msg.get("role") == "user":
+                recent_context = ""
+                for i in range(len(temp_messages) - 1, -1, -1):
+                    msg = temp_messages[i]
+                    if msg.get("role") == "user" and not last_user_query:
                         c = msg.get("content")
                         if isinstance(c, str):
                             last_user_query = c
-                            break
+                    elif msg.get("role") == "assistant" and not recent_context:
+                        c = msg.get("content")
+                        if isinstance(c, str):
+                            recent_context = c
+                    if last_user_query and recent_context:
+                        break
 
                 routed_tools, d_info = resolve_tools_for_query(
                     last_user_query,
+                    recent_context=recent_context,
                     base_url=self.model_config.get("base_url", ""),
                 )
                 if routed_tools:
@@ -1946,6 +1954,33 @@ class AIGeneratorThread(QThread):
             if self._is_stopped:
                 self.finished_signal.emit("")
                 return
+
+            # Fallback parser: if the model streamed raw XML-like tool call syntax instead of OpenAI tool_calls structure
+            if not tool_calls and "<|tool_call>" in full_content:
+                raw_call_match = re.search(r"<\|tool_call>.*?call:([a-zA-Z0-9_]+)\((.*?)\).*?<tool_call\|>", full_content)
+                if raw_call_match:
+                    parsed_name = raw_call_match.group(1).strip()
+                    parsed_arg_str = raw_call_match.group(2).strip()
+                    parsed_args = {}
+                    try:
+                        import ast
+                        expr = ast.parse(f"func({parsed_arg_str})")
+                        for kw in expr.body[0].value.keywords:
+                            parsed_args[kw.arg] = ast.literal_eval(kw.value)
+                    except Exception as pe:
+                        print(f"[Tool Parser] Error parsing raw args '{parsed_arg_str}': {pe}")
+
+                    tool_calls.append({
+                        "id": f"call_raw_{int(time.time())}",
+                        "type": "function",
+                        "function": {
+                            "name": parsed_name,
+                            "arguments": json.dumps(parsed_args),
+                        },
+                    })
+                    # Strip the raw tool call markup from user-facing text
+                    clean_display = re.sub(r"<\|tool_call>.*?<tool_call\|>", "", full_content).strip()
+                    full_content = clean_display
 
             if tool_calls:
                 if full_content.strip():
