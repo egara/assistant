@@ -323,11 +323,13 @@ Assistant features a clean Material Design GUI styled with **SicOS Nerd Font** i
 ### Built-in Slash Commands & Shortcuts
 You can type the following commands directly into the prompt box:
 * **/model**: Lists all available configured models indicating which one is active, or toggles to the next model in the list. Use `/model <name>` (e.g. `/model glm`) to switch directly to a specific model.
+* **/voice** or **/tts**: Toggles text-to-speech spoken audio output on/off.
 * **/about**: Displays application version and architectural details.
 * **/new** or **/reset**: Resets the current conversation context, wipes the chat memory file, and starts a fresh session.
 * **/clear**: Clears messages from the screen and purges context history.
 * **/help**: Displays an interactive help modal with quick command tips.
 * **`v`**: Typing `v` and pressing Enter instantly toggles push-to-talk voice recording mode.
+* **Speaker Button (`󰕾` / `󰝟`)**: Dedicated button next to the help button that toggles TTS audio output on demand (disabled by default on startup).
 
 ### System Tray Integration
 Assistant lives unobtrusively in your desktop environment's system tray:

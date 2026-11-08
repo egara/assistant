@@ -2300,12 +2300,14 @@ class Backend(QObject):
     inputStateChanged = pyqtSignal(bool)
     stopButtonStateChanged = pyqtSignal(bool)
     voiceStateChanged = pyqtSignal(bool)
+    ttsStateChanged = pyqtSignal(bool)
     requireApproval = pyqtSignal(str)
     clearApproval = pyqtSignal()
 
     def __init__(self, initial_query, launch_mode):
         super().__init__()
         self.is_voice_mode = launch_mode == "--voice"
+        self.tts_enabled = False  # Disabled by default on startup as requested
         self.is_recording = False
         self.rec_process = None
         self.messages = []
@@ -2393,6 +2395,7 @@ class Backend(QObject):
         self.activeModelChanged.emit(f"{self.active_model_key} ({curr_name})")
         self.availableModelsChanged.emit(self.get_models_list())
         self.voiceStateChanged.emit(self.is_recording or self.is_voice_mode)
+        self.ttsStateChanged.emit(self.tts_enabled)
         if self.is_voice_mode:
             self.statusChanged.emit("󰍬 Voice Mode Active", "#7fd962")
         for msg in self.messages:
@@ -2463,9 +2466,11 @@ class Backend(QObject):
             "- **/new** o **/reset**: Inicia una nueva sesión desde cero, eliminando el contexto y limpiando el chat.\n"
             "- **/clear**: Limpia los mensajes en pantalla y vacía la memoria de la conversación.\n"
             "- **/model**: Muestra los modelos configurados o alterna al siguiente. Usa `/model <nombre>` para cambiar a uno específico.\n"
+            "- **/voice** o **/tts**: Activa o desactiva la síntesis de voz en las respuestas.\n"
             "- **/about**: Muestra los detalles de versión y arquitectura de Assistant.\n"
             "- **/help**: Muestra esta información de ayuda.\n"
-            "- **󰍬 Botón o tecla 'v'**: Pulsa el botón de micrófono o escribe 'v' y pulsa Enter para activar/desactivar el modo de voz."
+            "- **󰍬 Botón o tecla 'v'**: Pulsa el botón de micrófono o escribe 'v' y pulsa Enter para activar/desactivar el modo de voz.\n"
+            "- **󰕾 / 󰝟 Botón de voz**: Pulsa el botón de altavoz junto a la ayuda para silenciar/activar la voz de respuesta."
         )
         self.messageAdded.emit("sys", help_text)
 
@@ -2598,6 +2603,9 @@ class Backend(QObject):
         elif lower_cmd == "/about":
             self.show_about()
             return
+        elif lower_cmd in ["/voice", "/tts"]:
+            self.toggleTTS()
+            return
         elif lower_cmd == "/model" or lower_cmd.startswith("/model "):
             parts = clean_cmd.split(maxsplit=1)
             arg = parts[1].strip() if len(parts) > 1 else ""
@@ -2619,6 +2627,17 @@ class Backend(QObject):
         if hasattr(self, "ai_thread") and self.ai_thread:
             self.ai_thread.approval_result = approved
             self.ai_thread.approval_event.set()
+
+    @pyqtSlot()
+    def toggleTTS(self):
+        """Toggle text-to-speech spoken output on/off."""
+        self.tts_enabled = not self.tts_enabled
+        if not self.tts_enabled:
+            self.stop_media_playback()
+        self.ttsStateChanged.emit(self.tts_enabled)
+        state_str = "activada" if self.tts_enabled else "desactivada"
+        icon_str = "󰕾" if self.tts_enabled else "󰝟"
+        self.messageAdded.emit("sys", f"{icon_str} Voz de respuesta (TTS) **{state_str}**.")
 
     @pyqtSlot()
     def toggleVoiceRecording(self):
@@ -2848,7 +2867,7 @@ class Backend(QObject):
         self.ai_thread.start()
 
     def on_ai_finished(self, full_response):
-        if full_response.strip():
+        if full_response.strip() and self.tts_enabled:
             self.play_audio(full_response)
         elif self.is_voice_mode:
             # If in voice mode and the tool executed silently without spoken output, resume listening

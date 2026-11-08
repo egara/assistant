@@ -18,6 +18,7 @@ ApplicationWindow {
     property int activeAiIndex: -1
     property bool userScrolledUp: false
     property bool isVoiceActive: false
+    property bool isTtsActive: false
     readonly property string monoFont: "JetBrainsMono Nerd Font Mono"
     readonly property int systemFontSize: window.font.pixelSize > 0 ? window.font.pixelSize : (window.font.pointSize > 0 ? Math.round(window.font.pointSize * 1.33) : 14)
 
@@ -42,6 +43,9 @@ ApplicationWindow {
         }
         function onVoiceStateChanged(active) {
             isVoiceActive = active;
+        }
+        function onTtsStateChanged(active) {
+            isTtsActive = active;
         }
         function onStatusChanged(text, colorHex) {
             statusLabel.text = text;
@@ -327,6 +331,31 @@ ApplicationWindow {
                     verticalAlignment: Text.AlignVCenter
                 }
                 onClicked: backend.show_help()
+            }
+
+            // TTS Voice Toggle Button
+            Button {
+                id: ttsButton
+                text: isTtsActive ? "󰕾" : "󰝟"
+                Layout.preferredWidth: 54
+                Layout.preferredHeight: 54
+                ToolTip.visible: hovered
+                ToolTip.text: isTtsActive ? "Voz de respuesta activada (clic para silenciar o usa /voice)" : "Voz de respuesta silenciada (clic para activar o usa /voice)"
+                background: Rectangle {
+                    color: isTtsActive ? "#1e3347" : (parent.down ? "#283446" : (parent.hovered ? "#222a38" : "#181d28"))
+                    radius: 14
+                    border.color: isTtsActive ? "#59c2ff" : (parent.hovered ? "#59c2ff" : "#283040")
+                    border.width: 1
+                }
+                contentItem: Text {
+                    text: parent.text
+                    color: isTtsActive ? "#59c2ff" : (parent.hovered ? "#59c2ff" : "#606b7a")
+                    font.family: window.monoFont
+                    font.pixelSize: 22
+                    horizontalAlignment: Text.AlignHCenter
+                    verticalAlignment: Text.AlignVCenter
+                }
+                onClicked: backend.toggleTTS()
             }
 
             // Text Input Box Container
