@@ -472,7 +472,7 @@ ApplicationWindow {
                 id: modelPopup
                 y: -height - 6
                 x: (parent.width - width) / 2
-                width: 240
+                width: 280
                 padding: 6
                 closePolicy: Popup.CloseOnEscape | Popup.CloseOnPressOutsideParent
 
@@ -503,53 +503,105 @@ ApplicationWindow {
                         color: "#232a38"
                     }
 
-                    Repeater {
-                        model: modelsModel
+                    ScrollView {
+                        width: parent.width
+                        implicitHeight: Math.min(modelColumn.implicitHeight, 360)
+                        clip: true
 
-                        delegate: Rectangle {
-                            width: parent.width
-                            height: 32
-                            radius: 8
-                            color: itemMouse.containsMouse ? "#1e2638" : (model.active ? "#192230" : "transparent")
-
-                            Row {
-                                anchors.fill: parent
-                                anchors.leftMargin: 10
-                                anchors.rightMargin: 10
-                                spacing: 8
-
-                                Text {
-                                    text: model.active ? "●" : "○"
-                                    color: model.active ? "#7fd962" : "#606b7a"
-                                    font.family: window.monoFont
-                                    font.pixelSize: 11
-                                    anchors.verticalCenter: parent.verticalCenter
-                                }
-
-                                Column {
-                                    anchors.verticalCenter: parent.verticalCenter
-                                    Text {
-                                        text: model.key
-                                        color: model.active ? "#ffffff" : "#a6b3c2"
-                                        font.family: window.monoFont
-                                        font.pixelSize: 12
-                                        font.bold: model.active
-                                    }
-                                }
+                        ScrollBar.vertical: ScrollBar {
+                            policy: ScrollBar.AsNeeded
+                            contentItem: Rectangle {
+                                color: "#2d3648"
+                                radius: 4
                             }
+                        }
 
-                            MouseArea {
-                                id: itemMouse
-                                anchors.fill: parent
-                                hoverEnabled: true
-                                cursorShape: Qt.PointingHandCursor
-                                onClicked: {
-                                    backend.switch_model(model.key);
-                                    modelPopup.close();
+                        Column {
+                            id: modelColumn
+                            width: parent.width
+                            spacing: 3
+
+                            Repeater {
+                                model: modelsModel
+
+                                delegate: Item {
+                                    width: modelColumn.width
+                                    height: model.is_header ? 24 : 32
+
+                                    // Category Header Delegate
+                                    Rectangle {
+                                        visible: model.is_header
+                                        anchors.fill: parent
+                                        color: "transparent"
+
+                                        Row {
+                                            anchors.fill: parent
+                                            anchors.leftMargin: 8
+                                            anchors.rightMargin: 8
+                                            spacing: 6
+
+                                            Text {
+                                                text: model.header_title
+                                                color: "#59c2ff"
+                                                font.family: window.monoFont
+                                                font.pixelSize: 10
+                                                font.bold: true
+                                                elide: Text.ElideRight
+                                                anchors.verticalCenter: parent.verticalCenter
+                                            }
+                                        }
+                                    }
+
+                                    // Model Item Delegate
+                                    Rectangle {
+                                        visible: !model.is_header
+                                        anchors.fill: parent
+                                        radius: 8
+                                        color: itemMouse.containsMouse ? "#1e2638" : (model.active ? "#192230" : "transparent")
+
+                                        Row {
+                                            anchors.fill: parent
+                                            anchors.leftMargin: 10
+                                            anchors.rightMargin: 10
+                                            spacing: 8
+
+                                            Text {
+                                                text: model.active ? "●" : "○"
+                                                color: model.active ? "#7fd962" : "#606b7a"
+                                                font.family: window.monoFont
+                                                font.pixelSize: 11
+                                                anchors.verticalCenter: parent.verticalCenter
+                                            }
+
+                                            Column {
+                                                anchors.verticalCenter: parent.verticalCenter
+                                                Text {
+                                                    text: model.key
+                                                    color: model.active ? "#ffffff" : "#a6b3c2"
+                                                    font.family: window.monoFont
+                                                    font.pixelSize: 12
+                                                    font.bold: model.active
+                                                    elide: Text.ElideRight
+                                                }
+                                            }
+                                        }
+
+                                        MouseArea {
+                                            id: itemMouse
+                                            anchors.fill: parent
+                                            hoverEnabled: true
+                                            cursorShape: Qt.PointingHandCursor
+                                            onClicked: {
+                                                backend.switch_model(model.key);
+                                                modelPopup.close();
+                                            }
+                                        }
+                                    }
                                 }
                             }
                         }
                     }
+
                     Rectangle {
                         width: parent.width
                         height: 1

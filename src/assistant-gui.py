@@ -213,16 +213,60 @@ if not MODELS_CATALOG:
             timeout=Timeout(fb_timeout, connect=10.0),
         )
 
-        fb_id = fb_name.split(":")[0].lower() if ":" in fb_name else "fallback"
-        MODELS_CATALOG[fb_id] = {
-            "key": fb_id,
-            "name": fb_name,
-            "client": fb_client,
-            "base_url": fb_url,
-            "api_key": fb_key,
-            "vision_enabled": fb_vision,
-            "provider_name": fb_provider,
-        }
+# Mark presets as favorites / config-defined
+for spec in MODELS_CATALOG.values():
+    spec["is_preset"] = True
+
+def discover_endpoint_models():
+    """
+    Query each configured provider base_url/models endpoint to discover
+    all available models and register them under MODELS_CATALOG.
+    """
+    seen_urls = set()
+    endpoints = []
+    for info in list(MODELS_CATALOG.values()):
+        b_url = info.get("base_url")
+        if not b_url or b_url in seen_urls:
+            continue
+        seen_urls.add(b_url)
+        endpoints.append(info)
+
+    for base_info in endpoints:
+        b_url = base_info.get("base_url", "").rstrip("/")
+        models_url = f"{b_url}/models"
+        p_name = base_info.get("provider_name", "Local")
+        auth_header = f"Bearer {base_info.get('api_key', 'sk-none')}"
+        req = urllib.request.Request(models_url, headers={"Authorization": auth_header})
+        try:
+            with urllib.request.urlopen(req, timeout=2.0) as resp:
+                data = json.loads(resp.read().decode("utf-8"))
+                for m in data.get("data", []):
+                    m_id = m.get("id")
+                    if not m_id:
+                        continue
+                    # Check if already registered
+                    already_in_catalog = any(
+                        info.get("base_url", "").rstrip("/") == b_url and (info.get("name") == m_id or info.get("key") == m_id)
+                        for info in MODELS_CATALOG.values()
+                    )
+                    if not already_in_catalog:
+                        # Build a unique key for the discovered model
+                        MODELS_CATALOG[m_id] = {
+                            "key": m_id,
+                            "name": m_id,
+                            "client": base_info.get("client"),
+                            "base_url": base_info.get("base_url"),
+                            "api_key": base_info.get("api_key"),
+                            "vision_enabled": base_info.get("vision_enabled", True),
+                            "provider_name": p_name,
+                            "is_preset": False,
+                        }
+                        logger.info(f"[Discovery] Found model '{m_id}' on {p_name} ({b_url})")
+        except Exception as e:
+            logger.debug(f"[Discovery] Could not fetch models from {models_url}: {e}")
+
+# Initial synchronous discovery with short timeout
+discover_endpoint_models()
 
 # Determine initial active model
 DEFAULT_MODEL_KEY = LLM_CONF.get("default")
@@ -2282,15 +2326,65 @@ class Backend(QObject):
         self.messageAppended.emit(text)
 
     def get_models_list(self):
-        """Return list of dicts for available models for QML popup/menu."""
+        """
+        Return structured list of items (headers and model entries) for the QML popup.
+        Ordered by:
+          1. Config Presets (Favorites / Defaults)
+          2. Discovered Models grouped by provider / endpoint
+        """
         res = []
-        for k, info in MODELS_CATALOG.items():
+
+        # 1. Configured Presets Header & Items
+        presets = [info for info in MODELS_CATALOG.values() if info.get("is_preset")]
+        if presets:
             res.append({
-                "key": k,
-                "name": info.get("name", k),
-                "url": info.get("base_url", ""),
-                "active": (k == self.active_model_key),
+                "is_header": True,
+                "header_title": "󰚩 MODELOS CONFIGURADOS",
+                "key": "",
+                "name": "",
+                "url": "",
+                "active": False,
             })
+            for info in presets:
+                k = info.get("key")
+                res.append({
+                    "is_header": False,
+                    "header_title": "",
+                    "key": k,
+                    "name": info.get("name", k),
+                    "url": info.get("base_url", ""),
+                    "active": (k == self.active_model_key),
+                })
+
+        # 2. Group Discovered Models by Provider
+        discovered_by_provider = {}
+        for info in MODELS_CATALOG.values():
+            if not info.get("is_preset"):
+                p_name = info.get("provider_name", "Endpoint Local")
+                b_url = info.get("base_url", "")
+                group_key = f"{p_name} ({b_url})"
+                discovered_by_provider.setdefault(group_key, []).append(info)
+
+        for group_header, items in discovered_by_provider.items():
+            res.append({
+                "is_header": True,
+                "header_title": f"󰒋 {group_header.upper()}",
+                "key": "",
+                "name": "",
+                "url": "",
+                "active": False,
+            })
+            for info in items:
+                k = info.get("key")
+                res.append({
+                    "is_header": False,
+                    "header_title": "",
+                    "key": k,
+                    "name": info.get("name", k),
+                    "url": info.get("base_url", ""),
+                    "active": (k == self.active_model_key),
+                })
+
         return res
 
     def emit_initial_state(self):
