@@ -334,6 +334,22 @@ tools = [
     {
         "type": "function",
         "function": {
+            "name": "get_current_time",
+            "description": "Get the current date, time, day of the week, and timezone from the system host.",
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "timezone": {
+                        "type": "string",
+                        "description": "Optional IANA timezone name (e.g. 'Europe/Madrid', 'UTC', 'America/New_York'). If omitted, uses the system local timezone.",
+                    }
+                },
+            },
+        },
+    },
+    {
+        "type": "function",
+        "function": {
             "name": "get_weather",
             "description": "Get current weather conditions and forecast for a specific city or region.",
             "parameters": {
@@ -561,6 +577,7 @@ DECISION_CONFIDENCE_THRESHOLD = float(DECISION_CONF.get("confidence_threshold", 
 # Tool categories mapping
 TOOL_CATEGORIES = {
     "conversational": [],
+    "datetime": ["get_current_time"],
     "desktop": ["manage_desktop", "get_system_knowledge"],
     "apps": ["open_application"],
     "filesystem": ["read_file", "write_file", "replace_in_file", "execute_command"],
@@ -594,6 +611,7 @@ def resolve_tools_for_query(user_query, recent_context=""):
                 ),
                 "criteria": {
                     "conversational": "Standard dialogue, greetings, explanations, programming questions, translation, or philosophical thoughts that require no tools.",
+                    "datetime": "Asking for the current time, date, day of the week, month, year, or timezone.",
                     "desktop": "Hyprland desktop management: switching workspaces, closing, moving, floating, pinning, or toggling fullscreen windows, or checking system knowledge/shortcuts.",
                     "apps": "Launching desktop or terminal applications (e.g. 'open browser', 'abre spotify', 'launch kitty', 'abre obsidian').",
                     "filesystem": "Reading, creating, modifying files or executing bash system commands in the terminal.",
@@ -636,6 +654,43 @@ def resolve_tools_for_query(user_query, recent_context=""):
 
     return tools
 
+
+
+def get_current_time(timezone_name=""):
+    """
+    Returns current local date, time, weekday, and timezone information.
+    Can optionally convert to any requested IANA timezone (e.g. Europe/Madrid, America/New_York).
+    """
+    try:
+        if timezone_name and timezone_name.strip():
+            tz = zoneinfo.ZoneInfo(timezone_name.strip())
+            now = datetime.datetime.now(tz)
+        else:
+            now = datetime.datetime.now().astimezone()
+
+        days_es = ["Lunes", "Martes", "Miércoles", "Jueves", "Viernes", "Sábado", "Domingo"]
+        months_es = [
+            "Enero", "Febrero", "Marzo", "Abril", "Mayo", "Junio",
+            "Julio", "Agosto", "Septiembre", "Octubre", "Noviembre", "Diciembre"
+        ]
+
+        day_name = days_es[now.weekday()]
+        month_name = months_es[now.month - 1]
+
+        info = {
+            "date": now.strftime("%Y-%m-%d"),
+            "time": now.strftime("%H:%M:%S"),
+            "day_of_week": day_name,
+            "day": now.day,
+            "month": month_name,
+            "year": now.year,
+            "timezone": str(now.tzname() or now.tzinfo),
+            "iso": now.isoformat(),
+            "formatted": f"{day_name}, {now.day} de {month_name} de {now.year}, {now.strftime('%H:%M:%S')} ({now.tzname()})",
+        }
+        return json.dumps(info, ensure_ascii=False)
+    except Exception as e:
+        return f"Error retrieving current time: {str(e)}"
 
 
 WMO_WEATHER_CODES = {
@@ -1846,7 +1901,10 @@ class AIGeneratorThread(QThread):
 
                     self.sys_message_signal.emit("sys", f"󰑮 Running {tool_name}...")
 
-                    if tool_name == "open_application":
+                    if tool_name == "get_current_time":
+                        all_tools_silent = False
+                        results = get_current_time(args.get("timezone", ""))
+                    elif tool_name == "open_application":
                         results = open_application(args.get("app", ""), args.get("target", ""))
                         if not results.startswith("Application launched in background:"):
                             all_tools_silent = False

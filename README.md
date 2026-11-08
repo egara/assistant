@@ -331,9 +331,10 @@ Assistant lives unobtrusively in your desktop environment's system tray:
 Unlike basic chat interfaces, Assistant parses your prompt and dynamically decides whether it needs to invoke a native tool.
 
 ### Built-in & MCP Tools
-1. `open_application(app, target)`: Universally detects installed desktop applications (`.desktop` entries via XDG) and CLI tools (`yazi`, `btop`, etc.). Automatically wraps GUI tools with `uwsm app` for Wayland session consistency and spawns terminal apps inside `kitty`. Silent execution prevents repetitive audio or unnecessary chat turns.
-2. `get_weather(location)`: Fetches precise meteorological data and multi-day forecasts via Open-Meteo's geocoding API with localized WMO status codes.
-3. `manage_desktop(action, target, window_address)`: Hyprland workspace and window manager controller:
+1. `get_current_time(timezone)`: Retrieves current date, time, weekday, and timezone natively from the host system (with optional IANA timezone conversion, replacing external time MCP servers).
+2. `open_application(app, target)`: Universally detects installed desktop applications (`.desktop` entries via XDG) and CLI tools (`yazi`, `btop`, etc.). Automatically wraps GUI tools with `uwsm app` for Wayland session consistency and spawns terminal apps inside `kitty`. Silent execution prevents repetitive audio or unnecessary chat turns.
+3. `get_weather(location)`: Fetches precise meteorological data and multi-day forecasts via Open-Meteo's geocoding API with localized WMO status codes.
+4. `manage_desktop(action, target, window_address)`: Hyprland workspace and window manager controller:
    * **Versioned Knowledge Base**: Dynamically detects the installed Hyprland version and chooses the exact dispatcher syntax (e.g., Lua dispatchers for v0.57+).
    * **User Mutable Knowledge Layer**: Learns and saves unknown dispatchers to `~/.local/share/assistant/hyprland_knowledge.json`.
    * **Window Targeting**: Targets and focuses specific windows for operations such as `close`, `float`, and `fullscreen`.
