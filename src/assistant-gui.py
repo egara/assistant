@@ -38,7 +38,7 @@ urllib3.disable_warnings(urllib3.exceptions.InsecureRequestWarning)
 # ==========================================
 # ⚙️ CONFIGURATION & PATH RESOLUTION
 # ==========================================
-APP_VERSION = "1.0.0"
+APP_VERSION = "1.1.0-dev"
 CONFIG_DIR = os.path.expanduser("~/.config/assistant")
 CONFIG_FILE = os.path.join(CONFIG_DIR, "config.json")
 TEMP_DIR = "/tmp/assistant"
@@ -547,6 +547,95 @@ tools = [
         },
     },
 ] + mcp_tools
+
+# ==========================================
+# 🧭 DECISION ROUTER (d3 / System One)
+# ==========================================
+DECISION_CONF = config.get("decision_router", {})
+DECISION_ENABLED = DECISION_CONF.get("enabled", False)
+DECISION_ENDPOINT = DECISION_CONF.get("endpoint", "http://127.0.0.1:8000/v1/systemone")
+DECISION_MODEL = DECISION_CONF.get("model", "d3:edge")
+DECISION_TIMEOUT = float(DECISION_CONF.get("timeout", 1.5))
+DECISION_CONFIDENCE_THRESHOLD = float(DECISION_CONF.get("confidence_threshold", 0.60))
+
+# Tool categories mapping
+TOOL_CATEGORIES = {
+    "conversational": [],
+    "desktop": ["manage_desktop", "get_system_knowledge"],
+    "apps": ["open_application"],
+    "filesystem": ["read_file", "write_file", "replace_in_file", "execute_command"],
+    "notes": ["obsidian_search", "obsidian_read", "obsidian_write"],
+    "weather": ["get_weather"],
+    "web_search": ["web_search"] + [t["function"]["name"] for t in mcp_tools],
+}
+
+def resolve_tools_for_query(user_query, recent_context=""):
+    """
+    Route incoming user query using the d3:edge decision model (/v1/systemone).
+    Returns filtered subset of tools. Falls back to all tools if disabled,
+    unreachable, or if decision confidence is below threshold.
+    """
+    if not DECISION_ENABLED or not user_query:
+        return tools
+
+    payload = {
+        "model": DECISION_MODEL,
+        "state": {
+            "user_query": user_query[:1000],
+            "context": recent_context[:1000] if recent_context else "",
+        },
+        "questions": {
+            "category": {
+                "type": "choice",
+                "instructions": (
+                    "Determine which specialized tool category is required to fulfill the user request. "
+                    "Select 'conversational' if the request is standard conversation, chit-chat, programming/coding advice, "
+                    "text explanation, greeting, or answering general knowledge without needing any system tools."
+                ),
+                "criteria": {
+                    "conversational": "Standard dialogue, greetings, explanations, programming questions, translation, or philosophical thoughts that require no tools.",
+                    "desktop": "Hyprland desktop management: switching workspaces, closing, moving, floating, pinning, or toggling fullscreen windows, or checking system knowledge/shortcuts.",
+                    "apps": "Launching desktop or terminal applications (e.g. 'open browser', 'abre spotify', 'launch kitty', 'abre obsidian').",
+                    "filesystem": "Reading, creating, modifying files or executing bash system commands in the terminal.",
+                    "notes": "Accessing, searching, reading, or writing notes in Obsidian vault.",
+                    "weather": "Checking live weather conditions, temperature, or rain forecasts for specific locations.",
+                    "web_search": "Searching the live internet for current events, web articles, real-time facts, documentation, or links.",
+                },
+            }
+        },
+    }
+
+    try:
+        req = urllib.request.Request(
+            DECISION_ENDPOINT,
+            data=json.dumps(payload).encode("utf-8"),
+            headers={"Content-Type": "application/json"},
+            method="POST",
+        )
+        with urllib.request.urlopen(req, timeout=DECISION_TIMEOUT) as response:
+            if response.status == 200:
+                res_data = json.loads(response.read().decode("utf-8"))
+                answers = res_data.get("answers", {})
+                cat_info = answers.get("category", {})
+
+                choice = cat_info.get("choice")
+                probabilities = cat_info.get("probabilities", {})
+                confidence = probabilities.get(choice, 1.0) if choice else 0.0
+
+                print(f"[Decision Router] Choice: '{choice}' (Confidence: {confidence:.2f})")
+
+                if choice in TOOL_CATEGORIES and confidence >= DECISION_CONFIDENCE_THRESHOLD:
+                    target_names = set(TOOL_CATEGORIES[choice])
+                    filtered = [t for t in tools if t.get("function", {}).get("name") in target_names]
+                    print(f"[Decision Router] Injected {len(filtered)} tools for category '{choice}'.")
+                    return filtered
+
+                print(f"[Decision Router] Confidence too low or unknown choice ('{choice}'). Passing all tools.")
+    except Exception as e:
+        print(f"[Decision Router] Bypass/Fallback (Error connecting to {DECISION_ENDPOINT}): {e}")
+
+    return tools
+
 
 
 WMO_WEATHER_CODES = {
@@ -1648,7 +1737,18 @@ class AIGeneratorThread(QThread):
 
             # Only inject the tools schema if the model is processing text-only context
             if not has_image:
-                api_kwargs["tools"] = tools
+                # Extract the last user message text for semantic decision routing
+                last_user_query = ""
+                for msg in reversed(temp_messages):
+                    if msg.get("role") == "user":
+                        c = msg.get("content")
+                        if isinstance(c, str):
+                            last_user_query = c
+                            break
+
+                routed_tools = resolve_tools_for_query(last_user_query)
+                if routed_tools:
+                    api_kwargs["tools"] = routed_tools
 
             try:
                 response = active_client.chat.completions.create(**api_kwargs)
@@ -1852,8 +1952,9 @@ class AIGeneratorThread(QThread):
                     "messages": temp_messages,
                     "temperature": 0.0,
                     "stream": True,
-                    "tools": tools,
                 }
+                if 'tools' in api_kwargs and api_kwargs['tools']:
+                    api_kwargs_t2["tools"] = api_kwargs["tools"]
 
                 try:
                     stream_response = active_client.chat.completions.create(**api_kwargs_t2)

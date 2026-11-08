@@ -262,11 +262,35 @@ Use this profile if you want total privacy with local speech synthesis.
     "vision_enabled": true,
     "system_context": "~/.config/assistant/context.md"
   },
+  "decision_router": {
+    "enabled": true,
+    "endpoint": "http://127.0.0.1:8000/v1/systemone",
+    "model": "d3:edge",
+    "timeout": 1.5,
+    "confidence_threshold": 0.60
+  },
   "voice": {
     "tts_engine": "local"
   }
 }
 ```
+
+### 5. The `"decision_router"` Block (FastFlowLM / d3 Integration)
+When running FastFlowLM with decision models (`flm serve ... --decision d3:edge`), Assistant can use FastFlowLM's `/v1/systemone` endpoint to perform ultra-fast (~50 ms) semantic intent classification and tool routing before calling the primary LLM:
+* `"enabled"` *(bool)*: Enables or disables the decision router (default: `false`).
+* `"endpoint"` *(string)*: URL of the decision model endpoint (default: `"http://127.0.0.1:8000/v1/systemone"`).
+* `"model"` *(string)*: Model tag or identifier (default: `"d3:edge"`).
+* `"timeout"` *(float)*: Network timeout in seconds before falling back to sending all tools (default: `1.5`).
+* `"confidence_threshold"` *(float)*: Minimum probability required to narrow down tools (default: `0.60`). If lower, all tools are safely passed.
+
+Tool categories routed by the decision engine:
+* `conversational`: Pure chit-chat, explanations, or code guidance. No tools injected (saves context and avoids hallucinations).
+* `desktop`: Hyprland window/workspace management and system shortcuts.
+* `apps`: Launching desktop and terminal applications.
+* `filesystem`: File manipulation (`read_file`, `write_file`, `replace_in_file`, `execute_command`).
+* `notes`: Local Obsidian vault actions (`obsidian_search`, `obsidian_read`, `obsidian_write`).
+* `weather`: Open-Meteo weather lookups (`get_weather`).
+* `web_search`: Internet search via SearXNG MCP or DuckDuckGo (`web_search`).
 
 ---
 
