@@ -611,15 +611,27 @@ def resolve_tools_for_query(user_query, recent_context=""):
                 ),
                 "criteria": {
                     "conversational": "Standard dialogue, greetings, explanations, programming questions, translation, or philosophical thoughts that require no tools.",
-                    "datetime": "Asking for the current time, date, day of the week, month, year, or timezone.",
+                    "datetime": "Specifically asking only for the current time, date, day of the week, month, year, or timezone.",
                     "desktop": "Hyprland desktop management: switching workspaces, closing, moving, floating, pinning, or toggling fullscreen windows, or checking system knowledge/shortcuts.",
                     "apps": "Launching desktop or terminal applications (e.g. 'open browser', 'abre spotify', 'launch kitty', 'abre obsidian').",
-                    "filesystem": "Reading, creating, modifying files or executing bash system commands in the terminal.",
+                    "filesystem": "Reading, creating, modifying files or executing bash system commands in the terminal (including finding files based on dates/times).",
                     "notes": "Accessing, searching, reading, or writing notes in Obsidian vault.",
                     "weather": "Checking live weather conditions, temperature, or rain forecasts for specific locations.",
-                    "web_search": "Searching the live internet for current events, web articles, real-time facts, documentation, or links.",
+                    "web_search": "Searching the live internet for news, current events, web articles, real-time facts, documentation, or links.",
                 },
-            }
+            },
+            "needs_datetime": {
+                "type": "noul",
+                "instructions": (
+                    "Does resolving this request require knowing the current date, time, weekday, or resolving relative time expressions "
+                    "(e.g. 'hoy', 'ayer', 'antier', 'mañana', 'hace unos días', 'última semana', 'noticias de ayer', 'ficheros de hace 3 días', "
+                    "'today', 'yesterday', 'days ago', 'last week')?"
+                ),
+                "criteria": {
+                    "true": "The user query mentions time, dates, or relative temporal anchors (today, yesterday, ago, current time/date).",
+                    "false": "The user query does not depend on knowing the current date or time.",
+                },
+            },
         },
     }
 
@@ -634,18 +646,40 @@ def resolve_tools_for_query(user_query, recent_context=""):
             if response.status == 200:
                 res_data = json.loads(response.read().decode("utf-8"))
                 answers = res_data.get("answers", {})
-                cat_info = answers.get("category", {})
 
+                # Check category question
+                cat_info = answers.get("category", {})
                 choice = cat_info.get("choice")
                 probabilities = cat_info.get("probabilities", {})
                 confidence = probabilities.get(choice, 1.0) if choice else 0.0
 
-                print(f"[Decision Router] Choice: '{choice}' (Confidence: {confidence:.2f})")
+                # Check needs_datetime question (noul: true / false)
+                dt_info = answers.get("needs_datetime", {})
+                dt_choice = str(dt_info.get("choice", "")).lower() in ["true", "yes", "1"]
+                dt_probs = dt_info.get("probabilities", {})
+                dt_confidence = dt_probs.get("true", 0.0) if isinstance(dt_probs, dict) else 0.0
+
+                # Heuristic keyword check as a robust safety net for relative time expressions
+                lower_query = user_query.lower()
+                has_time_keywords = any(
+                    kw in lower_query
+                    for kw in [
+                        "hoy", "ayer", "antier", "mañana", "hace ", "última semana", "este mes",
+                        "qué hora", "que hora", "qué día", "que dia", "en qué fecha", "en que fecha",
+                        "today", "yesterday", "ago", "last week", "current time", "current date"
+                    ]
+                )
+                include_datetime = dt_choice or (dt_confidence > 0.40) or has_time_keywords
+
+                print(f"[Decision Router] Choice: '{choice}' (Confidence: {confidence:.2f}) | Needs DateTime: {include_datetime}")
 
                 if choice in TOOL_CATEGORIES and confidence >= DECISION_CONFIDENCE_THRESHOLD:
                     target_names = set(TOOL_CATEGORIES[choice])
+                    if include_datetime and choice != "conversational":
+                        target_names.add("get_current_time")
+
                     filtered = [t for t in tools if t.get("function", {}).get("name") in target_names]
-                    print(f"[Decision Router] Injected {len(filtered)} tools for category '{choice}'.")
+                    print(f"[Decision Router] Injected {len(filtered)} tools: {[t['function']['name'] for t in filtered]}.")
                     return filtered
 
                 print(f"[Decision Router] Confidence too low or unknown choice ('{choice}'). Passing all tools.")
