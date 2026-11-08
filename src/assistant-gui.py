@@ -40,7 +40,7 @@ urllib3.disable_warnings(urllib3.exceptions.InsecureRequestWarning)
 # ==========================================
 # ⚙️ CONFIGURATION & PATH RESOLUTION
 # ==========================================
-APP_VERSION = "1.1.0-dev"
+APP_VERSION = "1.1.0"
 CONFIG_DIR = os.path.expanduser("~/.config/assistant")
 CONFIG_FILE = os.path.join(CONFIG_DIR, "config.json")
 TEMP_DIR = "/tmp/assistant"
