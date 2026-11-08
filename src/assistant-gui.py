@@ -9,6 +9,8 @@ import subprocess
 import threading
 import time
 import shutil
+import logging
+from logging.handlers import RotatingFileHandler
 
 from PyQt6.QtWidgets import QApplication, QSystemTrayIcon, QMenu
 from PyQt6.QtGui import QIcon, QPixmap, QPainter, QColor, QFont, QAction, QPainterPath
@@ -46,12 +48,24 @@ DATA_DIR = os.path.expanduser("~/.local/share/assistant")
 SOUND_DIR = os.path.join(DATA_DIR, "sounds")
 HISTORY_DIR = os.path.expanduser("~/.local/state/assistant")
 HISTORY_FILE = os.path.join(HISTORY_DIR, "chat_history.json")
+LOG_FILE = os.path.join(HISTORY_DIR, "assistant.log")
 USER_KNOWLEDGE_FILE = os.path.join(DATA_DIR, "hyprland_knowledge.json")
 
 os.makedirs(CONFIG_DIR, exist_ok=True)
 os.makedirs(DATA_DIR, exist_ok=True)
 os.makedirs(SOUND_DIR, exist_ok=True)
 os.makedirs(HISTORY_DIR, exist_ok=True)
+
+# Configure rotating file logging and console handler
+logger = logging.getLogger("assistant")
+logger.setLevel(logging.INFO)
+if not logger.handlers:
+    rf_handler = RotatingFileHandler(LOG_FILE, maxBytes=5 * 1024 * 1024, backupCount=3, encoding="utf-8")
+    rf_handler.setFormatter(logging.Formatter("%(asctime)s [%(levelname)s] %(message)s", datefmt="%Y-%m-%d %H:%M:%S"))
+    logger.addHandler(rf_handler)
+    c_handler = logging.StreamHandler(sys.stdout)
+    c_handler.setFormatter(logging.Formatter("%(asctime)s [%(levelname)s] %(message)s", datefmt="%H:%M:%S"))
+    logger.addHandler(c_handler)
 
 # Smart UI & Knowledge Path Resolver
 _base_dir = os.path.dirname(os.path.abspath(__file__))
@@ -641,6 +655,7 @@ def resolve_tools_for_query(user_query, recent_context="", base_url=""):
         },
     }
 
+    t_start = time.time()
     try:
         req = urllib.request.Request(
             endpoint,
@@ -649,6 +664,7 @@ def resolve_tools_for_query(user_query, recent_context="", base_url=""):
             method="POST",
         )
         with urllib.request.urlopen(req, timeout=DECISION_TIMEOUT) as response:
+            elapsed_ms = int((time.time() - t_start) * 1000)
             if response.status == 200:
                 res_data = json.loads(response.read().decode("utf-8"))
                 answers = res_data.get("answers", {})
@@ -683,8 +699,6 @@ def resolve_tools_for_query(user_query, recent_context="", base_url=""):
                     "needs_datetime": include_datetime,
                 }
 
-                print(f"[Decision Router] Choice: '{choice}' (Confidence: {confidence:.2f}) | Needs DateTime: {include_datetime}")
-
                 if choice in TOOL_CATEGORIES and confidence >= DECISION_CONFIDENCE_THRESHOLD:
                     target_names = set(TOOL_CATEGORIES[choice])
                     if include_datetime and choice != "conversational":
@@ -693,13 +707,19 @@ def resolve_tools_for_query(user_query, recent_context="", base_url=""):
                     filtered = [t for t in tools if t.get("function", {}).get("name") in target_names]
                     info["tools_count"] = len(filtered)
                     info["tools_names"] = [t["function"]["name"] for t in filtered]
-                    print(f"[Decision Router] Injected {len(filtered)} tools: {info['tools_names']}.")
+                    logger.info(
+                        f"[Router] Query: '{user_query[:60]}' -> Category: {choice} ({int(confidence*100)}%) | "
+                        f"Tools ({len(filtered)}): {info['tools_names']} | Latency: {elapsed_ms}ms"
+                    )
                     return filtered, info
 
-                print(f"[Decision Router] Confidence too low or unknown choice ('{choice}'). Passing all tools.")
+                logger.warning(
+                    f"[Router] Confidence too low for '{choice}' ({int(confidence*100)}% < {int(DECISION_CONFIDENCE_THRESHOLD*100)}%). "
+                    f"Passing all {len(tools)} tools as fallback | Latency: {elapsed_ms}ms"
+                )
                 return tools, {"choice": choice, "confidence": confidence, "tools_count": len(tools), "fallback": True}
     except Exception as e:
-        print(f"[Decision Router] Bypass/Fallback (Error connecting to {endpoint}): {e}")
+        logger.warning(f"[Router] Bypass/Fallback (Error connecting to {endpoint}): {e}")
 
     return tools, None
 
@@ -1865,17 +1885,7 @@ class AIGeneratorThread(QThread):
                 if routed_tools:
                     api_kwargs["tools"] = routed_tools
 
-                # Provide user visual feedback if decision router classified the query
-                if d_info and "choice" in d_info:
-                    choice = d_info.get("choice")
-                    conf = d_info.get("confidence", 0.0)
-                    t_count = d_info.get("tools_count", len(routed_tools) if routed_tools else 0)
-                    t_names = d_info.get("tools_names", [])
-                    t_str = f" ({', '.join(t_names)})" if t_names else " (sin tools)"
-                    self.sys_message_signal.emit(
-                        "sys",
-                        f"󰘳 **Router (`{DECISION_MODEL}`):** `{choice}` ({int(conf * 100)}%) 󰁔 {t_count} tools{t_str}"
-                    )
+            self.status_signal.emit("󰟷 Thinking...", "#59c2ff")
 
             try:
                 response = active_client.chat.completions.create(**api_kwargs)
@@ -2658,7 +2668,10 @@ class Backend(QObject):
         self._input_enabled = False
         self.inputStateChanged.emit(False)
         self.stopButtonStateChanged.emit(True)
-        self.statusChanged.emit("󰟷 Thinking...", "#59c2ff")
+        if DECISION_ENABLED:
+            self.statusChanged.emit("󰘳 Routing...", "#ffb454")
+        else:
+            self.statusChanged.emit("󰟷 Thinking...", "#59c2ff")
         self.messageAdded.emit("user", query)
 
         content = process_prompt(query)
@@ -2771,6 +2784,7 @@ class TrayManager(QObject):
 
         self.icon_idle = create_tray_icon("#828c99")
         self.icon_listening = create_tray_icon("#7fd962")
+        self.icon_routing = create_tray_icon("#ffb454")
         self.icon_thinking = create_tray_icon("#59c2ff")
 
         self.tray = QSystemTrayIcon(self.icon_idle, self.app)
@@ -2829,7 +2843,10 @@ class TrayManager(QObject):
     @pyqtSlot(str, str)
     def on_status_changed(self, text, color_hex):
         clean_text = text.lower()
-        if "thinking" in clean_text or "running" in clean_text or "transcribing" in clean_text:
+        if "routing" in clean_text:
+            self.tray.setIcon(self.icon_routing)
+            self.tray.setToolTip(f"Assistant AI ({text})")
+        elif "thinking" in clean_text or "running" in clean_text or "transcribing" in clean_text:
             self.tray.setIcon(self.icon_thinking)
             self.tray.setToolTip(f"Assistant AI ({text})")
         elif "listening" in clean_text or self.backend.is_recording:

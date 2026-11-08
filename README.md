@@ -316,6 +316,7 @@ Assistant lives unobtrusively in your desktop environment's system tray:
 * **Nerd Font Robot Tray Icon**: Visual robot icon (`󰚩`) that changes color dynamically based on activity state:
   * **Idle** (`#828c99` muted gray): Waiting for user interaction in resting state.
   * **Listening** (`#7fd962` vibrant green): Actively recording microphone input.
+  * **Routing** (`#ffb454` amber): FastFlowLM `d3:edge` decision model is categorizing intent and filtering tools.
   * **Thinking / Processing** (`#59c2ff` SicOS cyan/blue): The model is thinking or processing/executing system tools.
 * **Mouse Interactions**:
   * **Left Click**: Restores and focuses the main window (`Maximize`).
