@@ -2685,25 +2685,78 @@ class Backend(QObject):
 
     def transcribe_audio(self):
         self.statusChanged.emit("󰑮 Transcribing...", "#e5b454")
-        whisper_model = os.path.expanduser(
-            VOICE_CONF.get("whisper_model")
-            or "~/.local/share/assistant/models/ggml-small.bin"
-        )
-        res = subprocess.run(
-            [
-                "whisper-cli",
-                "-m",
-                whisper_model,
-                "-f",
-                os.path.join(TEMP_DIR, "voice_reply.wav"),
-                "-nt",
-                "-l",
-                "auto",
-            ],
-            capture_output=True,
-            text=True,
-        )
-        transcript = re.sub(r"\[.*?\]", "", res.stdout).strip()
+        wav_file = os.path.join(TEMP_DIR, "voice_reply.wav")
+        transcript = ""
+
+        # Check ASR configuration (e.g. FastFlowLM / OpenAI-compatible endpoint)
+        asr_conf = VOICE_CONF.get("asr", {})
+        asr_enabled = asr_conf.get("enabled", True) if isinstance(asr_conf, dict) else False
+        asr_endpoint = asr_conf.get("endpoint") if isinstance(asr_conf, dict) else None
+
+        if asr_enabled and asr_endpoint and os.path.exists(wav_file):
+            try:
+                import uuid
+                boundary = uuid.uuid4().hex
+                model_name = asr_conf.get("model", "whisper")
+                timeout_val = float(asr_conf.get("timeout", 10.0))
+                lang = asr_conf.get("language")
+
+                with open(wav_file, "rb") as f:
+                    wav_bytes = f.read()
+
+                parts = []
+                parts.append(f"--{boundary}\r\nContent-Disposition: form-data; name=\"model\"\r\n\r\n{model_name}\r\n".encode("utf-8"))
+                if lang:
+                    parts.append(f"--{boundary}\r\nContent-Disposition: form-data; name=\"language\"\r\n\r\n{lang}\r\n".encode("utf-8"))
+                parts.append(f"--{boundary}\r\nContent-Disposition: form-data; name=\"file\"; filename=\"audio.wav\"\r\nContent-Type: audio/wav\r\n\r\n".encode("utf-8"))
+                parts.append(wav_bytes)
+                parts.append(f"\r\n--{boundary}--\r\n".encode("utf-8"))
+                body = b"".join(parts)
+
+                headers = {
+                    "Content-Type": f"multipart/form-data; boundary={boundary}"
+                }
+                api_key = asr_conf.get("api_key")
+                if api_key:
+                    headers["Authorization"] = f"Bearer {api_key}"
+
+                req = urllib.request.Request(asr_endpoint, data=body, headers=headers)
+                log_debug(f"[ASR] Sending audio ({len(wav_bytes)} bytes) to ASR endpoint: {asr_endpoint}")
+                with urllib.request.urlopen(req, timeout=timeout_val) as resp:
+                    resp_json = json.loads(resp.read().decode("utf-8"))
+                    transcript = resp_json.get("text", "").strip()
+                    log_debug(f"[ASR] Remote transcription successful: '{transcript}'")
+            except Exception as e:
+                log_debug(f"[ASR] Remote transcription failed, falling back to local whisper-cli: {e}")
+                transcript = ""
+
+        # Fallback to local whisper-cli if remote ASR was not used or failed
+        if not transcript and os.path.exists(wav_file):
+            whisper_model = os.path.expanduser(
+                VOICE_CONF.get("whisper_model")
+                or "~/.local/share/assistant/models/ggml-small.bin"
+            )
+            if os.path.exists(whisper_model):
+                log_debug(f"[ASR] Running local whisper-cli with model: {whisper_model}")
+                res = subprocess.run(
+                    [
+                        "whisper-cli",
+                        "-m",
+                        whisper_model,
+                        "-f",
+                        wav_file,
+                        "-nt",
+                        "-l",
+                        "auto",
+                    ],
+                    capture_output=True,
+                    text=True,
+                )
+                transcript = re.sub(r"\[.*?\]", "", res.stdout).strip()
+            else:
+                log_debug(f"[ASR] Local whisper model not found: {whisper_model}")
+
+        transcript = re.sub(r"\[.*?\]", "", transcript).strip()
 
         if transcript:
             clean_no_spaces = re.sub(r"[^\w]", "", transcript.lower())

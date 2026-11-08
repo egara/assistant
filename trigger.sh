@@ -23,18 +23,28 @@ mkdir -p "$TEMP_DIR" "$SOUND_DIR"
 
 if [ ! -f "$CONFIG_FILE" ]; then assistant-gui ""; exit 1; fi
 
-WHISPER_MODEL=$(jq -r '.voice.whisper_model' "$CONFIG_FILE")
+WHISPER_MODEL=$(jq -r '.voice.whisper_model // empty' "$CONFIG_FILE" 2>/dev/null)
+ASR_ENABLED=$(jq -r '.voice.asr.enabled // false' "$CONFIG_FILE" 2>/dev/null)
+ASR_ENDPOINT=$(jq -r '.voice.asr.endpoint // empty' "$CONFIG_FILE" 2>/dev/null)
+ASR_MODEL=$(jq -r '.voice.asr.model // "whisper"' "$CONFIG_FILE" 2>/dev/null)
+ASR_LANG=$(jq -r '.voice.asr.language // empty' "$CONFIG_FILE" 2>/dev/null)
+ASR_API_KEY=$(jq -r '.voice.asr.api_key // empty' "$CONFIG_FILE" 2>/dev/null)
+SILENCE_DURATION=$(jq -r '.voice.silence_duration // "0.8"' "$CONFIG_FILE" 2>/dev/null)
+SILENCE_THRESHOLD=$(jq -r '.voice.silence_threshold // "1%"' "$CONFIG_FILE" 2>/dev/null)
 
-if [[ "$WHISPER_MODEL" == "null" || -z "$WHISPER_MODEL" ]]; then
+if [[ -z "$WHISPER_MODEL" ]]; then
     WHISPER_MODEL="$HOME/.local/share/assistant/models/ggml-small.bin"
 else
     WHISPER_MODEL="${WHISPER_MODEL/#\~/$HOME}"
 fi
 
-if [ ! -f "$WHISPER_MODEL" ]; then
-    notify-send -u normal "Assistant AI" "Downloading Whisper model (ggml-small.bin) for the first time..."
-    mkdir -p "$(dirname "$WHISPER_MODEL")"
-    wget -q --show-progress -O "$WHISPER_MODEL" "https://huggingface.co/ggerganov/whisper.cpp/resolve/main/ggml-small.bin"
+# Only download fallback whisper model if remote ASR is disabled and model doesn't exist
+if [[ "$ASR_ENABLED" != "true" || -z "$ASR_ENDPOINT" ]]; then
+    if [ ! -f "$WHISPER_MODEL" ]; then
+        notify-send -u normal "Assistant AI" "Downloading Whisper model (ggml-small.bin) for the first time..."
+        mkdir -p "$(dirname "$WHISPER_MODEL")"
+        wget -q --show-progress -O "$WHISPER_MODEL" "https://huggingface.co/ggerganov/whisper.cpp/resolve/main/ggml-small.bin"
+    fi
 fi
 
 if pgrep -f "assistant-gui" > /dev/null; then
@@ -93,11 +103,26 @@ if [[ "$MODE_VOICE" == true ]]; then
         echo $! > "$PID_FILE"
         wait $! 
     else
-        rec -q -r 16000 -c 1 -b 16 -e signed-integer "$TEMP_DIR/voice.wav" silence 1 0.1 1% 1 1.5 1%
+        rec -q -r 16000 -c 1 -b 16 -e signed-integer "$TEMP_DIR/voice.wav" silence 1 0.1 "$SILENCE_THRESHOLD" 1 "$SILENCE_DURATION" "$SILENCE_THRESHOLD"
         pw-play "$SOUND_DIR/stop.wav" 2>/dev/null &
     fi
     
-    RAW_TRANSCRIPT=$(whisper-cli -m "$WHISPER_MODEL" -f "$TEMP_DIR/voice.wav" -nt -l auto)
+    RAW_TRANSCRIPT=""
+    if [[ "$ASR_ENABLED" == "true" && -n "$ASR_ENDPOINT" && -f "$TEMP_DIR/voice.wav" ]]; then
+        CURL_ARGS=(-s -X POST "$ASR_ENDPOINT" --max-time 10 -F "file=@$TEMP_DIR/voice.wav" -F "model=$ASR_MODEL")
+        if [[ -n "$ASR_LANG" ]]; then
+            CURL_ARGS+=(-F "language=$ASR_LANG")
+        fi
+        if [[ -n "$ASR_API_KEY" ]]; then
+            CURL_ARGS+=(-H "Authorization: Bearer $ASR_API_KEY")
+        fi
+        RAW_TRANSCRIPT=$(curl "${CURL_ARGS[@]}" 2>/dev/null | jq -r '.text // empty' 2>/dev/null)
+    fi
+
+    # Fallback to local whisper-cli if ASR was not used or failed
+    if [[ -z "$RAW_TRANSCRIPT" && -f "$TEMP_DIR/voice.wav" && -f "$WHISPER_MODEL" ]]; then
+        RAW_TRANSCRIPT=$(whisper-cli -m "$WHISPER_MODEL" -f "$TEMP_DIR/voice.wav" -nt -l auto 2>/dev/null)
+    fi
     USER_PROMPT=$(echo "$RAW_TRANSCRIPT" | sed -e 's/\[.*\]//g' | xargs)
 fi
 

@@ -184,6 +184,15 @@ Controls the speech-to-text (STT) and text-to-speech (TTS) pipelines.
 "voice": {
     "tts_engine": "none",
     "whisper_model": "~/.local/share/assistant/models/ggml-small.bin",
+    "silence_duration": "0.8",
+    "silence_threshold": "1%",
+    "asr": {
+        "enabled": true,
+        "endpoint": "http://127.0.0.1:52625/v1/audio/transcriptions",
+        "model": "whisper",
+        "language": "es",
+        "timeout": 10.0
+    },
     "tts_local_models": {
         "en": "~/.local/share/assistant/models/en_US-lessac-medium.onnx",
         "es": "~/.local/share/assistant/models/es_ES-sharvard-medium.onnx"
@@ -195,11 +204,21 @@ Controls the speech-to-text (STT) and text-to-speech (TTS) pipelines.
 }
 ```
 
+* **`asr`** *(Object, Optional)*: Configures hardware-accelerated Automatic Speech Recognition (ASR) via an OpenAI-compatible transcription endpoint (such as FastFlowLM running with `--asr 1`):
+    * **`enabled`** *(Boolean)*: Enables remote ASR (defaults to `true` when the block is present).
+    * **`endpoint`** *(String)*: OpenAI-compatible audio transcriptions endpoint (e.g. `http://127.0.0.1:52625/v1/audio/transcriptions`).
+    * **`model`** *(String)*: Model identifier passed to the endpoint (defaults to `"whisper"`).
+    * **`language`** *(String, Optional)*: ISO language code hint (e.g. `"es"` or `"en"`).
+    * **`timeout`** *(Float, Optional)*: Request timeout in seconds before falling back (defaults to `10.0`).
+    * **`api_key`** *(String, Optional)*: Optional Bearer token for remote ASR providers.
+    * **Automatic Fallback**: If the remote ASR endpoint is unreachable or errors out, Assistant seamlessly falls back to the local CPU `whisper-cli`.
+* **`silence_duration`** *(String/Float, Optional)*: Silence duration in seconds required to automatically detect end-of-speech (defaults to `0.8`).
+* **`silence_threshold`** *(String, Optional)*: Energy threshold for silence cut (defaults to `"1%"`).
 * **`tts_engine`** *(String)*: Options are `"none"`, `"online"`, or `"local"`.
     * `none` (or `disabled`): Disables speech synthesis entirely. The assistant displays text without speaking.
     * `online`: Connects to Microsoft Edge's cloud neural speech synthesis stream. Requires an active network connection.
     * `local`: Switches to 100% private, zero-network processing using the compiled **Piper ONNX** engine.
-* **`whisper_model`** *(String)*: Absolute path to your local compiled Whisper GGML model binary file.
+* **`whisper_model`** *(String)*: Absolute path to your local compiled Whisper GGML model binary file (used as local fallback).
 * **`tts_local_models`** *(Object)*: Key-value map pairing ISO language strings to the absolute local directory path of your Piper `.onnx` speech files.
 * **`tts_online_voices`** *(Object)*: Key-value map tracking language codes to specific Microsoft Edge cloud neural voice structures.
 
