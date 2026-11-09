@@ -357,7 +357,7 @@ Requests are resolved through a multi-round agentic loop instead of a fixed two-
 
 * **Chained tool execution**: Every round executes *all* requested tools (native + MCP) and feeds the results back to the model, supporting arbitrarily chained calls (e.g. two parallel `web_search` queries followed by a synthesis). The loop is capped at 4 tool rounds; the final round withholds the tools schema to force a plain text answer.
 * **Reasoning model support**: Reasoning models (GLM / DeepSeek style) stream their chain of thought in a separate `reasoning_content` field. Assistant captures it and surfaces a live "Thinking…" status snippet instead of appearing frozen, and logs it for diagnostics.
-* **Silent completions**: Successful desktop actions (app launches, `hyprctl`, `wpctl`, `brightnessctl`) still finish immediately with a silent "Hecho." turn without conversational clutter.
+* **Silent completions**: Successful state-changing desktop actions (app launches, `hyprctl dispatch`, `wpctl set-volume`, `brightnessctl set`) still finish immediately with a silent "Hecho." turn without conversational clutter. Read-only inspection commands (`hyprctl clients/binds/monitors`, `wpctl status`, …) keep the agentic loop alive so the model can use their results instead of ending the request mid-investigation.
 * **LLM diagnostics**: Requests, executed tools (with arguments), captured reasoning, and answers are logged to `~/.local/state/assistant/assistant.log`, making model-specific issues easy to debug.
 
 ### Built-in & MCP Tools
