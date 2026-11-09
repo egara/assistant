@@ -367,7 +367,7 @@ Requests are resolved through a multi-round agentic loop instead of a fixed two-
 4. `manage_desktop(action, target, window_address)`: Hyprland workspace and window manager controller:
    * **Versioned Knowledge Base**: Dynamically detects the installed Hyprland version and chooses the exact dispatcher syntax (e.g., Lua dispatchers for v0.57+).
    * **User Mutable Knowledge Layer**: Learns and saves unknown dispatchers to `~/.local/share/assistant/hyprland_knowledge.json`.
-   * **Window Targeting**: Targets and focuses specific windows for operations such as `close`, `float`, and `fullscreen`.
+   * **Window Targeting**: Targets and focuses specific windows for operations such as `focus_window`, `close`, `float`, and `fullscreen`.
    * **Silent Feedback**: Fast window/workspace movements execute silently without interrupting the voice flow.
 4. `read_file(path)`: Directly reads the contents of any file on the local filesystem.
 5. `write_file(path, content)`: Creates or updates local files with specified content and creates directories if necessary.
