@@ -366,6 +366,7 @@ Requests are resolved through a multi-round agentic loop instead of a fixed two-
 3. `get_weather(location)`: Fetches precise meteorological data and multi-day forecasts via Open-Meteo's geocoding API with localized WMO status codes.
 4. `manage_desktop(action, target, window_address)`: Hyprland workspace and window manager controller:
    * **Versioned Knowledge Base**: Dynamically detects the installed Hyprland version and chooses the exact dispatcher syntax (e.g., Lua dispatchers for v0.57+).
+   * **KB-Driven Tool Schema**: The `manage_desktop` action enum and descriptions are generated from `hyprland_knowledge.json`, so new or user-learned actions become available to the model without code changes. `_command_intents` in the same file classifies shell commands as state-changing (silent) vs read-only (agentic loop continues).
    * **User Mutable Knowledge Layer**: Learns and saves unknown dispatchers to `~/.local/share/assistant/hyprland_knowledge.json`.
    * **Window Targeting**: Targets and focuses specific windows for operations such as `focus_window`, `close`, `float`, and `fullscreen`.
    * **Silent Feedback**: Fast window/workspace movements execute silently without interrupting the voice flow.
