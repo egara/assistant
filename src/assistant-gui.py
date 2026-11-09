@@ -1807,6 +1807,98 @@ class TTSWorkerThread(QThread):
                 pass
 
 
+# Maximum number of chained tool-execution rounds per user request. Strong
+# agentic models (e.g. GLM-5.3-Flash) often chain several searches before
+# answering; the final allowed round withholds the tools schema to force a
+# plain text answer instead of letting the model call tools indefinitely.
+MAX_TOOL_ROUNDS = 4
+
+
+def extract_reasoning(delta):
+    """Extract reasoning_content from a streaming delta, when present.
+
+    Reasoning models (GLM / DeepSeek style) stream their chain of thought in a
+    dedicated field before the visible content. The OpenAI SDK surfaces it as
+    an extra attribute on the delta object, not as a declared field.
+    """
+    extra = getattr(delta, "model_extra", None)
+    if not extra:
+        return None
+    reasoning = extra.get("reasoning_content")
+    if reasoning is None:
+        reasoning = extra.get("reasoning")  # OpenRouter-style alias
+    return reasoning if isinstance(reasoning, str) else None
+
+
+def dispatch_tool(tool_name, args, execute_command_safe=None):
+    """Execute a single tool call by name.
+
+    Returns a tuple ``(results_text, is_silent)``. ``is_silent`` marks desktop
+    operations that succeeded without user-facing output (app launches, volume
+    or brightness changes, window management), which let the generator finish
+    immediately without extra conversational chatter.
+    """
+    if execute_command_safe is None:
+        execute_command_safe = execute_command
+
+    if tool_name == "get_current_time":
+        return get_current_time(args.get("timezone", "")), False
+    if tool_name == "open_application":
+        results = open_application(args.get("app", ""), args.get("target", ""))
+        return results, results.startswith("Application launched in background:")
+    if tool_name == "get_weather":
+        return get_weather(args.get("location", "")), False
+    if tool_name == "web_search":
+        return perform_web_search(args.get("query", "")), False
+    if tool_name == "read_file":
+        return read_file(args.get("path", "")), False
+    if tool_name == "write_file":
+        return write_file(args.get("path", ""), args.get("content", "")), True
+    if tool_name == "replace_in_file":
+        return (
+            replace_in_file(
+                args.get("path", ""),
+                args.get("target", ""),
+                args.get("replacement", ""),
+            ),
+            True,
+        )
+    if tool_name == "obsidian_search":
+        return search_obsidian(args.get("query", "")), False
+    if tool_name == "obsidian_read":
+        return read_obsidian(args.get("filename", "")), False
+    if tool_name == "obsidian_write":
+        return write_obsidian(args.get("filename", ""), args.get("content", "")), True
+    if tool_name == "manage_desktop":
+        results = manage_desktop(
+            args.get("action", ""),
+            args.get("target", ""),
+            args.get("window_address", ""),
+        )
+        # Successful window/workspace dispatch stays silent; failures are surfaced.
+        return results, results.startswith("Success")
+    if tool_name == "get_system_knowledge":
+        return get_system_knowledge(args.get("topic", "index")), False
+    if tool_name == "execute_command":
+        cmd = args.get("command", "")
+        results = execute_command_safe(cmd)
+        # Silence if it launched an application in the background, is a successful hyprctl command,
+        # or is a quick hardware/multimedia toggle (wpctl, brightnessctl) that executed cleanly
+        cmd_clean = cmd.strip()
+        is_app_launch = results.startswith("Application launched in background:")
+        is_hyprctl_success = cmd_clean.startswith("hyprctl") and "error" not in results.lower()
+        is_hardware_control_success = (
+            (cmd_clean.startswith("wpctl") or cmd_clean.startswith("brightnessctl"))
+            and "error" not in results.lower()
+        )
+        return results, is_app_launch or is_hyprctl_success or is_hardware_control_success
+    if tool_name in mcp_manager.tools:
+        return mcp_manager.call_tool(tool_name, args), False
+
+    # Unknown tool: report back instead of dropping the call silently.
+    return "Done.", False
+
+
 class AIGeneratorThread(QThread):
     status_signal = pyqtSignal(str, str)
     active_model_signal = pyqtSignal(str)
@@ -1930,115 +2022,176 @@ class AIGeneratorThread(QThread):
                     api_kwargs["tools"] = routed_tools
 
             self.status_signal.emit("󰟷 Thinking...", "#59c2ff")
+            self.active_model_signal.emit(f"{model_key} ({active_model})")
+            logger.info(
+                f"[LLM] Request to '{model_key}' ({active_model}) | "
+                f"tools={len(api_kwargs.get('tools', []))}"
+            )
+            # Agentic loop: stream a response, execute any requested tools, and feed
+            # the results back for another round until the model answers with plain
+            # text or the safety cap is reached. Strong agentic models (e.g.
+            # GLM-5.3-Flash) chain several tool rounds; the previous fixed 2-turn
+            # flow silently dropped any chained tool call it did not know about.
+            last_status_emit = 0.0
+            for round_num in range(MAX_TOOL_ROUNDS + 1):
+                request_kwargs = {
+                    "model": active_model,
+                    "messages": temp_messages,
+                    "temperature": 0.0,
+                    "stream": True,
+                }
+                # On the final forced round the tools schema is withheld so the
+                # model must answer with text instead of chaining another call.
+                if api_kwargs.get("tools") and round_num < MAX_TOOL_ROUNDS:
+                    request_kwargs["tools"] = api_kwargs["tools"]
 
-            try:
-                response = active_client.chat.completions.create(**api_kwargs)
-                self.active_model_signal.emit(f"{model_key} ({active_model})")
-            except openai.APIConnectionError as conn_err:
-                self.sys_message_signal.emit(
-                    "sys", f"󰀦 Error: No se pudo conectar al endpoint de '{model_key}' ({active_model}) en {self.model_config.get('base_url')}."
-                )
-                self.finished_signal.emit("")
-                return
-            except Exception as req_err:
-                self.sys_message_signal.emit(
-                    "sys", f"󰀦 Error en '{model_key}': {str(req_err)}"
-                )
-                self.finished_signal.emit("")
-                return
-            tool_calls, full_content = [], ""
-            bubble_created = False
-
-            buffer = ""
-            last_emit = time.time()
-
-            for chunk in response:
-                if self._is_stopped:
-                    break
-                delta = chunk.choices[0].delta
-                if delta.tool_calls:
-                    for tc in delta.tool_calls:
-                        idx = (
-                            tc.index
-                            if tc.index is not None
-                            else max(0, len(tool_calls) - 1)
-                        )
-                        while len(tool_calls) <= idx:
-                            tool_calls.append(
-                                {
-                                    "id": "",
-                                    "type": "function",
-                                    "function": {"name": "", "arguments": ""},
-                                }
-                            )
-                        if tc.id:
-                            tool_calls[idx]["id"] = tc.id
-                        if tc.function:
-                            if tc.function.name:
-                                tool_calls[idx]["function"]["name"] = tc.function.name
-                            if tc.function.arguments:
-                                tool_calls[idx]["function"]["arguments"] += (
-                                    tc.function.arguments
-                                )
-
-                if delta.content:
-                    clean_text = (
-                        delta.content.replace('<|"|>', '"')
-                        .replace("<|/|>", "")
-                        .replace("execute_command", "")
+                try:
+                    response = active_client.chat.completions.create(**request_kwargs)
+                except openai.APIConnectionError:
+                    self.sys_message_signal.emit(
+                        "sys",
+                        f"󰀦 Error: No se pudo conectar al endpoint de '{model_key}' ({active_model}) en {self.model_config.get('base_url')}.",
                     )
-                    if clean_text:
-                        if not bubble_created:
-                            self.new_bubble_signal.emit("ai", "")
-                            bubble_created = True
-                            buffer = ""
-                            last_emit = time.time()
+                    self.finished_signal.emit("")
+                    return
+                except Exception as req_err:
+                    self.sys_message_signal.emit(
+                        "sys", f"󰀦 Error en '{model_key}': {str(req_err)}"
+                    )
+                    self.finished_signal.emit("")
+                    return
 
-                        full_content += clean_text
-                        buffer += clean_text
+                tool_calls, full_content, full_reasoning = [], "", ""
+                bubble_created = False
 
-                        if time.time() - last_emit > 0.05:
-                            self.append_text_signal.emit(buffer)
-                            buffer = ""
-                            last_emit = time.time()
+                buffer = ""
+                last_emit = time.time()
 
-            if buffer and not self._is_stopped:
-                self.append_text_signal.emit(buffer)
+                for chunk in response:
+                    if self._is_stopped:
+                        break
+                    if not chunk.choices:
+                        continue
+                    delta = chunk.choices[0].delta
 
-            if self._is_stopped:
-                self.finished_signal.emit("")
-                return
+                    # Reasoning models stream their chain of thought in a separate
+                    # field: surface it as live status feedback instead of leaving
+                    # the UI frozen on "Thinking..." with no visible progress.
+                    reasoning_delta = extract_reasoning(delta)
+                    if reasoning_delta:
+                        full_reasoning += reasoning_delta
+                        if time.time() - last_status_emit > 0.5:
+                            snippet = full_reasoning[-48:].replace("\n", " ").strip()
+                            self.status_signal.emit(
+                                f"󰟷 Thinking… {snippet}", "#59c2ff"
+                            )
+                            last_status_emit = time.time()
 
-            # Fallback parser: if the model streamed raw XML-like tool call syntax instead of OpenAI tool_calls structure
-            if not tool_calls and "<|tool_call>" in full_content:
-                raw_call_match = re.search(r"<\|tool_call>.*?call:([a-zA-Z0-9_]+)\((.*?)\).*?<tool_call\|>", full_content)
-                if raw_call_match:
-                    parsed_name = raw_call_match.group(1).strip()
-                    parsed_arg_str = raw_call_match.group(2).strip()
-                    parsed_args = {}
-                    try:
-                        import ast
-                        expr = ast.parse(f"func({parsed_arg_str})")
-                        for kw in expr.body[0].value.keywords:
-                            parsed_args[kw.arg] = ast.literal_eval(kw.value)
-                    except Exception as pe:
-                        print(f"[Tool Parser] Error parsing raw args '{parsed_arg_str}': {pe}")
+                    if delta.tool_calls:
+                        for tc in delta.tool_calls:
+                            idx = (
+                                tc.index
+                                if tc.index is not None
+                                else max(0, len(tool_calls) - 1)
+                            )
+                            while len(tool_calls) <= idx:
+                                tool_calls.append(
+                                    {
+                                        "id": "",
+                                        "type": "function",
+                                        "function": {"name": "", "arguments": ""},
+                                    }
+                                )
+                            if tc.id:
+                                tool_calls[idx]["id"] = tc.id
+                            if tc.function:
+                                if tc.function.name:
+                                    tool_calls[idx]["function"]["name"] = tc.function.name
+                                if tc.function.arguments:
+                                    tool_calls[idx]["function"]["arguments"] += (
+                                        tc.function.arguments
+                                    )
 
-                    tool_calls.append({
-                        "id": f"call_raw_{int(time.time())}",
-                        "type": "function",
-                        "function": {
-                            "name": parsed_name,
-                            "arguments": json.dumps(parsed_args),
-                        },
-                    })
-                    # Strip the raw tool call markup from user-facing text
-                    clean_display = re.sub(r"<\|tool_call>.*?<tool_call\|>", "", full_content).strip()
-                    full_content = clean_display
+                    if delta.content:
+                        clean_text = (
+                            delta.content.replace('<|"|>', '"')
+                            .replace("<|/|>", "")
+                            .replace("execute_command", "")
+                        )
+                        if clean_text:
+                            if not bubble_created:
+                                self.new_bubble_signal.emit("ai", "")
+                                bubble_created = True
+                                buffer = ""
+                                last_emit = time.time()
 
-            if tool_calls:
+                            full_content += clean_text
+                            buffer += clean_text
+
+                            if time.time() - last_emit > 0.05:
+                                self.append_text_signal.emit(buffer)
+                                buffer = ""
+                                last_emit = time.time()
+
+                if buffer and not self._is_stopped:
+                    self.append_text_signal.emit(buffer)
+
+                if self._is_stopped:
+                    self.finished_signal.emit("")
+                    return
+
+                if full_reasoning:
+                    logger.info(
+                        f"[LLM] Round {round_num + 1}: model reasoning "
+                        f"({len(full_reasoning)} chars): {full_reasoning[:300]!r}"
+                    )
+
+                # Fallback parser: if the model streamed raw XML-like tool call syntax instead of OpenAI tool_calls structure
+                if not tool_calls and "<|tool_call>" in full_content:
+                    raw_call_match = re.search(r"<\|tool_call>.*?call:([a-zA-Z0-9_]+)\((.*?)\).*?<tool_call\|>", full_content)
+                    if raw_call_match:
+                        parsed_name = raw_call_match.group(1).strip()
+                        parsed_arg_str = raw_call_match.group(2).strip()
+                        parsed_args = {}
+                        try:
+                            import ast
+                            expr = ast.parse(f"func({parsed_arg_str})")
+                            for kw in expr.body[0].value.keywords:
+                                parsed_args[kw.arg] = ast.literal_eval(kw.value)
+                        except Exception as pe:
+                            print(f"[Tool Parser] Error parsing raw args '{parsed_arg_str}': {pe}")
+
+                        tool_calls.append({
+                            "id": f"call_raw_{int(time.time())}",
+                            "type": "function",
+                            "function": {
+                                "name": parsed_name,
+                                "arguments": json.dumps(parsed_args),
+                            },
+                        })
+                        # Strip the raw tool call markup from user-facing text
+                        clean_display = re.sub(r"<\|tool_call>.*?<tool_call\|>", "", full_content).strip()
+                        full_content = clean_display
+
+                if not tool_calls:
+                    # Plain text answer: the agentic request is complete.
+                    if full_content.strip():
+                        self.messages.append(
+                            {"role": "assistant", "content": full_content}
+                        )
+                        logger.info(
+                            f"[LLM] Round {round_num + 1}: answer ({len(full_content)} chars)"
+                        )
+                    else:
+                        logger.warning(
+                            f"[LLM] Round {round_num + 1}: model returned no content and no tool calls"
+                        )
+                    break
+
+                # --- Tool execution round (any tool, chained until an answer) ---
                 if full_content.strip():
                     temp_messages.append({"role": "assistant", "content": full_content})
+
                 tool_results_text = ""
                 all_tools_silent = True
 
@@ -2049,78 +2202,20 @@ class AIGeneratorThread(QThread):
                     tool_name = tool_call["function"]["name"]
                     try:
                         args = json.loads(tool_call["function"]["arguments"])
-                    except:
+                    except Exception:
                         args = {}
 
+                    logger.info(
+                        f"[LLM] Round {round_num + 1}: executing '{tool_name}' "
+                        f"with {json.dumps(args, ensure_ascii=False)[:200]}"
+                    )
                     self.sys_message_signal.emit("sys", f"󰑮 Running {tool_name}...")
 
-                    if tool_name == "get_current_time":
+                    results, tool_silent = dispatch_tool(
+                        tool_name, args, execute_command_safe=self.execute_command_safe
+                    )
+                    if not tool_silent:
                         all_tools_silent = False
-                        results = get_current_time(args.get("timezone", ""))
-                    elif tool_name == "open_application":
-                        results = open_application(args.get("app", ""), args.get("target", ""))
-                        if not results.startswith("Application launched in background:"):
-                            all_tools_silent = False
-                    elif tool_name == "get_weather":
-                        all_tools_silent = False
-                        results = get_weather(args.get("location", ""))
-                    elif tool_name == "web_search":
-                        all_tools_silent = False
-                        results = perform_web_search(args.get("query", ""))
-                    elif tool_name == "read_file":
-                        all_tools_silent = False
-                        results = read_file(args.get("path", ""))
-                    elif tool_name == "write_file":
-                        results = write_file(args.get("path", ""), args.get("content", ""))
-                    elif tool_name == "replace_in_file":
-                        results = replace_in_file(
-                            args.get("path", ""),
-                            args.get("target", ""),
-                            args.get("replacement", ""),
-                        )
-                    elif tool_name == "obsidian_search":
-                        all_tools_silent = False
-                        results = search_obsidian(args.get("query", ""))
-                    elif tool_name == "obsidian_read":
-                        all_tools_silent = False
-                        results = read_obsidian(args.get("filename", ""))
-                    elif tool_name == "obsidian_write":
-                        results = write_obsidian(
-                            args.get("filename", ""), args.get("content", "")
-                        )
-                    elif tool_name == "manage_desktop":
-                        results = manage_desktop(
-                            args.get("action", ""),
-                            args.get("target", ""),
-                            args.get("window_address", ""),
-                        )
-                        # If manage_desktop failed, do not silence so the user gets notified
-                        if not results.startswith("Success"):
-                            all_tools_silent = False
-                    elif tool_name == "get_system_knowledge":
-                        all_tools_silent = False
-                        results = get_system_knowledge(args.get("topic", "index"))
-                    elif tool_name == "execute_command":
-                        cmd = args.get("command", "")
-                        results = self.execute_command_safe(cmd)
-                        # Silence if it launched an application in the background, is a successful hyprctl command,
-                        # or is a quick hardware/multimedia toggle (wpctl, brightnessctl) that executed cleanly
-                        is_app_launch = results.startswith("Application launched in background:")
-                        cmd_clean = cmd.strip()
-                        is_hyprctl_success = cmd_clean.startswith("hyprctl") and "error" not in results.lower()
-                        is_hardware_control_success = (
-                            (cmd_clean.startswith("wpctl") or cmd_clean.startswith("brightnessctl"))
-                            and "error" not in results.lower()
-                        )
-                        if not (is_app_launch or is_hyprctl_success or is_hardware_control_success):
-                            all_tools_silent = False
-                    elif tool_name in mcp_manager.tools:
-                        all_tools_silent = False
-                        results = mcp_manager.call_tool(tool_name, args)
-                    else:
-                        all_tools_silent = False
-                        results = "Done."
-
                     tool_results_text += f"\n--- {tool_name} ---\n{results}\n"
 
                 if self._is_stopped:
@@ -2154,127 +2249,6 @@ class AIGeneratorThread(QThread):
                         ),
                     }
                 )
-                final_content = ""
-                bubble_created = False
-
-                # Turn 2 API Call (Processing Tool Results, allowing chained tool invocation!)
-                api_kwargs_t2 = {
-                    "model": active_model,
-                    "messages": temp_messages,
-                    "temperature": 0.0,
-                    "stream": True,
-                }
-                if 'tools' in api_kwargs and api_kwargs['tools']:
-                    api_kwargs_t2["tools"] = api_kwargs["tools"]
-
-                try:
-                    stream_response = active_client.chat.completions.create(**api_kwargs_t2)
-                except openai.APIConnectionError as t2_conn_err:
-                    self.sys_message_signal.emit(
-                        "sys", f"󰀦 Error: Conexión perdida con '{model_key}' en Turn 2."
-                    )
-                    self.finished_signal.emit("")
-                    return
-                except Exception as t2_err:
-                    self.sys_message_signal.emit(
-                        "sys", f"󰀦 Error en Turn 2 ({model_key}): {str(t2_err)}"
-                    )
-                    self.finished_signal.emit("")
-                    return
-
-                buffer = ""
-                last_emit = time.time()
-                t2_tool_calls = []
-
-                for chunk in stream_response:
-                    if self._is_stopped:
-                        break
-                    delta = chunk.choices[0].delta
-                    if delta.tool_calls:
-                        for tc in delta.tool_calls:
-                            idx = (
-                                tc.index
-                                if tc.index is not None
-                                else max(0, len(t2_tool_calls) - 1)
-                            )
-                            while len(t2_tool_calls) <= idx:
-                                t2_tool_calls.append(
-                                    {
-                                        "id": "",
-                                        "type": "function",
-                                        "function": {"name": "", "arguments": ""},
-                                    }
-                                )
-                            if tc.id:
-                                t2_tool_calls[idx]["id"] = tc.id
-                            if tc.function:
-                                if tc.function.name:
-                                    t2_tool_calls[idx]["function"]["name"] = tc.function.name
-                                if tc.function.arguments:
-                                    t2_tool_calls[idx]["function"]["arguments"] += (
-                                        tc.function.arguments
-                                    )
-
-                    if delta.content:
-                        clean_text = (
-                            delta.content.replace('<|"|>', '"')
-                            .replace("<|/|>", "")
-                            .replace("execute_command", "")
-                        )
-                        if clean_text:
-                            if not bubble_created:
-                                self.new_bubble_signal.emit("ai", "")
-                                bubble_created = True
-                                buffer = ""
-                                last_emit = time.time()
-
-                            final_content += clean_text
-                            buffer += clean_text
-
-                            if time.time() - last_emit > 0.05:
-                                self.append_text_signal.emit(buffer)
-                                buffer = ""
-                                last_emit = time.time()
-
-                if buffer and not self._is_stopped:
-                    self.append_text_signal.emit(buffer)
-
-                if self._is_stopped:
-                    self.finished_signal.emit("")
-                    return
-
-                # If the model invoked an action in Turn 2 (e.g. open_application after find), execute it!
-                if t2_tool_calls:
-                    for call in t2_tool_calls:
-                        tool_name = call["function"]["name"]
-                        try:
-                            args = json.loads(call["function"]["arguments"])
-                        except:
-                            args = {}
-                        self.sys_message_signal.emit("sys", f"󰑮 Running {tool_name}...")
-                        if tool_name == "open_application":
-                            open_application(args.get("app", ""), args.get("target", ""))
-                        elif tool_name == "execute_command":
-                            self.execute_command_safe(args.get("command", ""))
-                        elif tool_name == "manage_desktop":
-                            manage_desktop(
-                                args.get("action", ""),
-                                args.get("target", ""),
-                                args.get("window_address", ""),
-                            )
-
-                if final_content.strip():
-                    self.messages.append(
-                        {"role": "assistant", "content": final_content}
-                    )
-                elif t2_tool_calls:
-                    self.messages.append(
-                        {"role": "assistant", "content": "Hecho.", "is_silent": True}
-                    )
-                full_content = final_content
-            else:
-                if full_content.strip():
-                    self.messages.append({"role": "assistant", "content": full_content})
 
             self.history_save_signal.emit()
             self.finished_signal.emit(full_content)
