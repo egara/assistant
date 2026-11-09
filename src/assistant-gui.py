@@ -387,6 +387,97 @@ class MCPManager:
 mcp_manager = MCPManager(MCP_SERVERS_CONF)
 mcp_tools = mcp_manager.discover_tools()
 
+def load_hyprland_recipes():
+    """Load and merge Hyprland recipes (Factory system recipes + User mutable recipes)."""
+    merged = {}
+    # 1. System/factory recipes (base)
+    if SYSTEM_KNOWLEDGE_FILE and os.path.exists(SYSTEM_KNOWLEDGE_FILE):
+        try:
+            with open(SYSTEM_KNOWLEDGE_FILE, "r", encoding="utf-8") as f:
+                merged = json.load(f)
+        except Exception as e:
+            print(f"[Hyprland Knowledge] Error loading system recipes: {e}")
+
+    # 2. User mutable recipes in ~/.local/share/assistant (highest priority)
+    if os.path.exists(USER_KNOWLEDGE_FILE):
+        try:
+            with open(USER_KNOWLEDGE_FILE, "r", encoding="utf-8") as f:
+                user_recipes = json.load(f)
+                for ver, acts in user_recipes.items():
+                    if ver.startswith("_"):
+                        # Allow the user layer to override KB metadata (e.g. _command_intents)
+                        if ver == "_command_intents":
+                            merged[ver] = acts
+                        continue
+                    if ver not in merged:
+                        merged[ver] = {}
+                    merged[ver].update(acts)
+        except Exception as e:
+            print(f"[Hyprland Knowledge] Error loading user recipes: {e}")
+
+    return merged
+
+
+def build_manage_desktop_tool(recipes):
+    """Build the manage_desktop tool schema from the Hyprland knowledge base.
+
+    The action enum and descriptions come from the recipe KB, so new or
+    user-learned actions become available to the model without code changes.
+    """
+    actions = []
+    for ver_key, ver_recipes in recipes.items():
+        if ver_key.startswith("_") or not isinstance(ver_recipes, dict):
+            continue
+        for action, recipe in ver_recipes.items():
+            if action.startswith("_"):
+                continue
+            desc = recipe.get("description", "") if isinstance(recipe, dict) else ""
+            if not any(action == name for name, _ in actions):
+                actions.append((action, desc))
+    actions.sort()
+    action_docs = "; ".join(
+        f"'{name}' ({desc})" if desc else f"'{name}'" for name, desc in actions
+    )
+    return {
+        "type": "function",
+        "function": {
+            "name": "manage_desktop",
+            "description": (
+                "Manage workspaces and windows on Hyprland using version-aware recipes. "
+                f"Available actions: {action_docs}. "
+                "IMPORTANT: If the user mentions a specific application or window (e.g. 'cierra chrome', "
+                "'minimiza firefox', 'foco en firefox'), you MUST provide 'window_address' with the "
+                "application name/class (e.g. 'chrome', 'firefox') so the action is applied to that "
+                "specific window instead of the currently active/focused window."
+            ),
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "action": {
+                        "type": "string",
+                        "enum": [name for name, _ in actions],
+                        "description": "Desktop action to perform.",
+                    },
+                    "target": {
+                        "type": "string",
+                        "description": "Target workspace number (e.g. '1', '2') or name. Required for workspace actions.",
+                    },
+                    "window_address": {
+                        "type": "string",
+                        "description": "Target application name, class, title, or address (e.g. 'chrome', 'google-chrome', 'firefox', 'kitty', '0x...'). When specified, targets and focuses this window before performing the action. If omitted, applies to the currently active window.",
+                    },
+                },
+                "required": ["action"],
+            },
+        },
+    }
+
+
+# Load once at startup: recipe actions drive the manage_desktop tool schema and
+# _command_intents drives the silent/active classification of shell commands.
+HYPRLAND_RECIPES = load_hyprland_recipes()
+COMMAND_INTENTS = HYPRLAND_RECIPES.get("_command_intents", {})
+
 ## TOOLS & LOGIC
 tools = [
     {
@@ -569,41 +660,7 @@ tools = [
             },
         },
     },
-    {
-        "type": "function",
-        "function": {
-            "name": "manage_desktop",
-            "description": "Manage workspaces and windows on Hyprland using version-aware recipes (switch workspaces, focus a specific window, move windows, toggle floating, fullscreen, or close a window). Use 'focus_window' (not 'focus_workspace') to focus an application window by name. IMPORTANT: If the user mentions a specific application or window (e.g. 'cierra chrome', 'minimiza firefox', 'foco en firefox'), you MUST provide 'window_address' with the application name/class (e.g. 'chrome', 'firefox') so the action is applied to that specific window instead of the currently active/focused window.",
-            "parameters": {
-                "type": "object",
-                "properties": {
-                    "action": {
-                        "type": "string",
-                        "enum": [
-                            "focus_workspace",
-                            "focus_window",
-                            "move_to_workspace",
-                            "toggle_floating",
-                            "toggle_fullscreen",
-                            "close_window",
-                            "pin_window",
-                            "center_window",
-                        ],
-                        "description": "Desktop action to perform.",
-                    },
-                    "target": {
-                        "type": "string",
-                        "description": "Target workspace number (e.g. '1', '2') or name. Required for workspace actions.",
-                    },
-                    "window_address": {
-                        "type": "string",
-                        "description": "Target application name, class, title, or address (e.g. 'chrome', 'google-chrome', 'firefox', 'kitty', '0x...'). When specified, targets and focuses this window before performing the action. If omitted, applies to the currently active window.",
-                    },
-                },
-                "required": ["action"],
-            },
-        },
-    },
+    build_manage_desktop_tool(HYPRLAND_RECIPES),
     {
         "type": "function",
         "function": {
@@ -1419,34 +1476,6 @@ def get_hyprland_version():
     return "default"
 
 
-def load_hyprland_recipes():
-    """Load and merge Hyprland recipes (Factory system recipes + User mutable recipes)."""
-    merged = {}
-    # 1. System/factory recipes (base)
-    if SYSTEM_KNOWLEDGE_FILE and os.path.exists(SYSTEM_KNOWLEDGE_FILE):
-        try:
-            with open(SYSTEM_KNOWLEDGE_FILE, "r", encoding="utf-8") as f:
-                merged = json.load(f)
-        except Exception as e:
-            print(f"[Hyprland Knowledge] Error loading system recipes: {e}")
-
-    # 2. User mutable recipes in ~/.local/share/assistant (highest priority)
-    if os.path.exists(USER_KNOWLEDGE_FILE):
-        try:
-            with open(USER_KNOWLEDGE_FILE, "r", encoding="utf-8") as f:
-                user_recipes = json.load(f)
-                for ver, acts in user_recipes.items():
-                    if ver.startswith("_"):
-                        continue
-                    if ver not in merged:
-                        merged[ver] = {}
-                    merged[ver].update(acts)
-        except Exception as e:
-            print(f"[Hyprland Knowledge] Error loading user recipes: {e}")
-
-    return merged
-
-
 def save_user_hyprland_recipe(version, action, recipe_dict):
     """Persist newly learned recipe in mutable ~/.local/share/assistant/hyprland_knowledge.json."""
     try:
@@ -1891,32 +1920,16 @@ def dispatch_tool(tool_name, args, execute_command_safe=None):
     if tool_name == "execute_command":
         cmd = args.get("command", "")
         results = execute_command_safe(cmd)
-        # Only state-changing commands may end the request silently. Read-only
-        # inspection commands (hyprctl clients/binds/monitors, wpctl status,
-        # brightnessctl info, ...) must keep the agentic loop alive so the model
-        # can use their results in the next round; marking them silent would
-        # terminate the request mid-investigation with an invisible "Hecho.".
+        # The silent/active policy is data-driven from the Hyprland knowledge
+        # base (_command_intents): a command only ends the request silently when
+        # its binary matches a state-changing intent (e.g. 'hyprctl dispatch',
+        # 'wpctl set-volume'). Read-only inspection commands keep the agentic
+        # loop alive so the model can use their results to answer.
         cmd_clean = cmd.strip()
         parts = cmd_clean.split()
         is_app_launch = results.startswith("Application launched in background:")
-        is_action = False
-        if len(parts) > 1:
-            if parts[0] == "hyprctl":
-                # dispatch/keyword/reload/... change compositor state; everything
-                # else (clients, binds, monitors, getoption, ...) is a read query.
-                is_action = parts[1] in (
-                    "dispatch",
-                    "keyword",
-                    "reload",
-                    "setcursor",
-                    "movecursortocorner",
-                    "exit",
-                )
-            elif parts[0] == "wpctl":
-                # set-volume / set-mute / set-default change state; status/get-volume are reads.
-                is_action = parts[1].startswith("set-")
-            elif parts[0] == "brightnessctl":
-                is_action = " set" in cmd_clean
+        intent_tokens = COMMAND_INTENTS.get(parts[0], []) if len(parts) > 1 else []
+        is_action = any(parts[1].startswith(tok) for tok in intent_tokens)
         no_error = "error" not in results.lower()
         silent = is_app_launch or (is_action and no_error)
         return results, silent
