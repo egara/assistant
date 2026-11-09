@@ -2063,6 +2063,11 @@ class AIGeneratorThread(QThread):
                 # model must answer with text instead of chaining another call.
                 if api_kwargs.get("tools") and round_num < MAX_TOOL_ROUNDS:
                     request_kwargs["tools"] = api_kwargs["tools"]
+                elif api_kwargs.get("tools"):
+                    logger.info(
+                        f"[LLM] Round {round_num + 1}: tool round cap reached "
+                        f"-> forcing text-only answer"
+                    )
 
                 try:
                     response = active_client.chat.completions.create(**request_kwargs)
@@ -2165,8 +2170,12 @@ class AIGeneratorThread(QThread):
                         f"({len(full_reasoning)} chars): {full_reasoning[:300]!r}"
                     )
 
-                # Fallback parser: if the model streamed raw XML-like tool call syntax instead of OpenAI tool_calls structure
-                if not tool_calls and "<|tool_call>" in full_content:
+                # Fallback parser: if the model streamed raw XML-like tool call syntax instead of OpenAI tool_calls structure.
+                # Only applies on rounds where tools were actually offered; on the
+                # forced final round any tool-call-like output is a hallucination
+                # and must be shown as plain text instead of being executed.
+                tools_offered = bool(request_kwargs.get("tools"))
+                if tools_offered and not tool_calls and "<|tool_call>" in full_content:
                     raw_call_match = re.search(r"<\|tool_call>.*?call:([a-zA-Z0-9_]+)\((.*?)\).*?<tool_call\|>", full_content)
                     if raw_call_match:
                         parsed_name = raw_call_match.group(1).strip()
