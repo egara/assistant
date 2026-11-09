@@ -352,6 +352,14 @@ Assistant lives unobtrusively in your desktop environment's system tray:
 
 Unlike basic chat interfaces, Assistant parses your prompt and dynamically decides whether it needs to invoke a native tool.
 
+### Multi-Round Agentic Loop & Reasoning Models
+Requests are resolved through a multi-round agentic loop instead of a fixed two-turn flow:
+
+* **Chained tool execution**: Every round executes *all* requested tools (native + MCP) and feeds the results back to the model, supporting arbitrarily chained calls (e.g. two parallel `web_search` queries followed by a synthesis). The loop is capped at 4 tool rounds; the final round withholds the tools schema to force a plain text answer.
+* **Reasoning model support**: Reasoning models (GLM / DeepSeek style) stream their chain of thought in a separate `reasoning_content` field. Assistant captures it and surfaces a live "Thinking…" status snippet instead of appearing frozen, and logs it for diagnostics.
+* **Silent completions**: Successful desktop actions (app launches, `hyprctl`, `wpctl`, `brightnessctl`) still finish immediately with a silent "Hecho." turn without conversational clutter.
+* **LLM diagnostics**: Requests, executed tools (with arguments), captured reasoning, and answers are logged to `~/.local/state/assistant/assistant.log`, making model-specific issues easy to debug.
+
 ### Built-in & MCP Tools
 1. `get_current_time(timezone)`: Retrieves current date, time, weekday, and timezone natively from the host system (with optional IANA timezone conversion, replacing external time MCP servers).
 2. `open_application(app, target)`: Universally detects installed desktop applications (`.desktop` entries via XDG) and CLI tools (`yazi`, `btop`, etc.). Automatically wraps GUI tools with `uwsm app` for Wayland session consistency and spawns terminal apps inside `kitty`. Silent execution prevents repetitive audio or unnecessary chat turns.
