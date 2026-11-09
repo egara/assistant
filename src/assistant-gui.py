@@ -1882,16 +1882,35 @@ def dispatch_tool(tool_name, args, execute_command_safe=None):
     if tool_name == "execute_command":
         cmd = args.get("command", "")
         results = execute_command_safe(cmd)
-        # Silence if it launched an application in the background, is a successful hyprctl command,
-        # or is a quick hardware/multimedia toggle (wpctl, brightnessctl) that executed cleanly
+        # Only state-changing commands may end the request silently. Read-only
+        # inspection commands (hyprctl clients/binds/monitors, wpctl status,
+        # brightnessctl info, ...) must keep the agentic loop alive so the model
+        # can use their results in the next round; marking them silent would
+        # terminate the request mid-investigation with an invisible "Hecho.".
         cmd_clean = cmd.strip()
+        parts = cmd_clean.split()
         is_app_launch = results.startswith("Application launched in background:")
-        is_hyprctl_success = cmd_clean.startswith("hyprctl") and "error" not in results.lower()
-        is_hardware_control_success = (
-            (cmd_clean.startswith("wpctl") or cmd_clean.startswith("brightnessctl"))
-            and "error" not in results.lower()
-        )
-        return results, is_app_launch or is_hyprctl_success or is_hardware_control_success
+        is_action = False
+        if len(parts) > 1:
+            if parts[0] == "hyprctl":
+                # dispatch/keyword/reload/... change compositor state; everything
+                # else (clients, binds, monitors, getoption, ...) is a read query.
+                is_action = parts[1] in (
+                    "dispatch",
+                    "keyword",
+                    "reload",
+                    "setcursor",
+                    "movecursortocorner",
+                    "exit",
+                )
+            elif parts[0] == "wpctl":
+                # set-volume / set-mute / set-default change state; status/get-volume are reads.
+                is_action = parts[1].startswith("set-")
+            elif parts[0] == "brightnessctl":
+                is_action = " set" in cmd_clean
+        no_error = "error" not in results.lower()
+        silent = is_app_launch or (is_action and no_error)
+        return results, silent
     if tool_name in mcp_manager.tools:
         return mcp_manager.call_tool(tool_name, args), False
 
@@ -2224,6 +2243,10 @@ class AIGeneratorThread(QThread):
 
                 # If all executed actions were silent desktop operations that succeeded, finish immediately!
                 if all_tools_silent:
+                    logger.info(
+                        f"[LLM] Round {round_num + 1}: all tools silent -> "
+                        f"finishing with silent 'Hecho.' (no visible answer)"
+                    )
                     # Append a concise, natural confirmation to conversation memory so the LLM knows this request
                     # was resolved without mimicking pseudo-code or leaving consecutive user turns.
                     self.messages.append(
@@ -2254,11 +2277,13 @@ class AIGeneratorThread(QThread):
             self.finished_signal.emit(full_content)
 
         except openai.APIConnectionError:
+            logger.error("[LLM] Connection to the LLM server failed")
             self.sys_message_signal.emit(
                 "sys", "󰀦 Error: The Local LLM Server is offline."
             )
             self.finished_signal.emit("The local model server is offline.")
         except Exception as e:
+            logger.error(f"[LLM] Unhandled generator error: {e}", exc_info=True)
             self.sys_message_signal.emit("sys", f"[API ERROR]: {str(e)}")
             self.finished_signal.emit("")
 
