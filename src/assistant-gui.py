@@ -573,7 +573,7 @@ tools = [
         "type": "function",
         "function": {
             "name": "manage_desktop",
-            "description": "Manage workspaces and windows on Hyprland using version-aware recipes (switch workspaces, move windows, toggle floating, fullscreen, or close a window). IMPORTANT: If the user mentions a specific application or window (e.g. 'cierra chrome', 'minimiza firefox'), you MUST provide 'window_address' with the application name/class (e.g. 'chrome', 'firefox') so the action is applied to that specific window instead of the currently active/focused window.",
+            "description": "Manage workspaces and windows on Hyprland using version-aware recipes (switch workspaces, focus a specific window, move windows, toggle floating, fullscreen, or close a window). Use 'focus_window' (not 'focus_workspace') to focus an application window by name. IMPORTANT: If the user mentions a specific application or window (e.g. 'cierra chrome', 'minimiza firefox', 'foco en firefox'), you MUST provide 'window_address' with the application name/class (e.g. 'chrome', 'firefox') so the action is applied to that specific window instead of the currently active/focused window.",
             "parameters": {
                 "type": "object",
                 "properties": {
@@ -581,6 +581,7 @@ tools = [
                         "type": "string",
                         "enum": [
                             "focus_workspace",
+                            "focus_window",
                             "move_to_workspace",
                             "toggle_floating",
                             "toggle_fullscreen",
@@ -1670,7 +1671,15 @@ def manage_desktop(action, target="", window_address=""):
         if recipe_type == "lua_eval":
             code = recipe.get("command", "").replace("{target}", ws_param).replace("{window}", win_param)
             res = subprocess.run(["hyprctl", "eval", code], capture_output=True, text=True, timeout=3)
-            return f"Success on Hyprland (v{ver}).{learned_notice}" if res.returncode == 0 else f"Failed: {res.stderr or res.stdout}"
+            # hyprctl eval ALWAYS exits 0, even when the Lua script fails or the
+            # dispatch result is false (e.g. 'Invalid workspace' warnings), so the
+            # process exit code is not an honest success signal. Warnings/errors in
+            # the output are the only reliable failure indicator.
+            output = (res.stdout + res.stderr).lower()
+            success = res.returncode == 0 and "warning" not in output and "error" not in output
+            if success:
+                return f"Success on Hyprland (v{ver}).{learned_notice}"
+            return f"Failed: {(res.stdout + res.stderr).strip() or 'unknown error'}"
 
         elif recipe_type == "lua_repl":
             code = recipe.get("script", "").replace("{target}", ws_param).replace("{window}", win_param)
