@@ -361,7 +361,7 @@ Requests are resolved through a multi-round agentic loop instead of a fixed two-
 * **LLM diagnostics**: Requests, executed tools (with arguments), captured reasoning, and answers are logged to `~/.local/state/assistant/assistant.log`, making model-specific issues easy to debug.
 
 ### Built-in & MCP Tools
-1. `get_current_time(timezone)`: Retrieves current date, time, weekday, and timezone natively from the host system (with optional IANA timezone conversion, replacing external time MCP servers).
+1. `get_current_time(timezone)`: Retrieves real-time date, time, weekday, and timezone natively from the host system (with optional IANA timezone conversion, replacing external time MCP servers). Anchors time-sensitive queries, relative dates ('hoy', 'ayer'), and web searches.
 2. `open_application(app, target)`: Universally detects installed desktop applications (`.desktop` entries via XDG) and CLI tools (`yazi`, `btop`, etc.). Automatically wraps GUI tools with `uwsm app` for Wayland session consistency and spawns terminal apps inside `kitty`. Silent execution prevents repetitive audio or unnecessary chat turns.
 3. `get_weather(location)`: Fetches precise meteorological data and multi-day forecasts via Open-Meteo's geocoding API with localized WMO status codes.
 4. `manage_desktop(action, target, window_address)`: Hyprland workspace and window manager controller:

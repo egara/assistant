@@ -484,7 +484,7 @@ tools = [
         "type": "function",
         "function": {
             "name": "get_current_time",
-            "description": "Get the current date, time, day of the week, and timezone from the system host.",
+            "description": "Get the real-time date, time, weekday, and timezone from the system host. Crucial for anchoring time-sensitive queries, relative dates ('today', 'yesterday', 'this week'), and internet searches.",
             "parameters": {
                 "type": "object",
                 "properties": {
@@ -2487,6 +2487,9 @@ class Backend(QObject):
             "Screen brightness uses `brightnessctl set <level>`. When in doubt or to discover installed apps, layouts, or keybindings, "
             "call `get_system_knowledge(topic='index'|'hardware'|'apps'|'hyprland'|'shortcuts')`.\n"
             "- For Hyprland workspace and window actions, use `manage_desktop`.\n"
+            "- CRITICAL RULE FOR TIME & WEB SEARCH: When answering questions about current events, recent news, "
+            "or relative dates (e.g. 'hoy', 'ayer', 'esta semana'), you MUST use the exact date obtained from "
+            "`get_current_time` to frame your search queries and final report. NEVER revert to pre-training cutoff dates or assume past years.\n"
             "- Keep answers concise, natural, and conversational."
         )
         if USER_CONTEXT and not USER_CONTEXT.startswith("<!--"):
