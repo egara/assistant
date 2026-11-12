@@ -2074,6 +2074,7 @@ class AIGeneratorThread(QThread):
             # GLM-5.3-Flash) chain several tool rounds; the previous fixed 2-turn
             # flow silently dropped any chained tool call it did not know about.
             last_status_emit = 0.0
+            executed_signatures_history = set()
             for round_num in range(MAX_TOOL_ROUNDS + 1):
                 request_kwargs = {
                     "model": active_model,
@@ -2238,11 +2239,46 @@ class AIGeneratorThread(QThread):
                         )
                     break
 
-                # --- Tool execution round (any tool, chained until an answer) ---
-                if full_content.strip():
-                    temp_messages.append({"role": "assistant", "content": full_content})
+                # --- Loop prevention: detect identical consecutive tool call sets ---
+                round_signatures = []
+                for tc in tool_calls:
+                    fn_name = tc.get("function", {}).get("name", "")
+                    fn_args = tc.get("function", {}).get("arguments", "")
+                    round_signatures.append((fn_name, fn_args))
+                current_round_sig = tuple(round_signatures)
 
-                tool_results_text = ""
+                if current_round_sig in executed_signatures_history:
+                    logger.warning(
+                        f"[LLM] Round {round_num + 1}: detected repetitive tool call loop "
+                        f"{current_round_sig} -> stopping loop"
+                    )
+                    if full_content.strip():
+                        self.messages.append({"role": "assistant", "content": full_content})
+                    break
+                executed_signatures_history.add(current_round_sig)
+
+                # --- Tool execution round (standard OpenAI tool calling format) ---
+                clean_tool_calls = []
+                for i, tc in enumerate(tool_calls):
+                    call_id = tc.get("id") or f"call_{round_num}_{i}_{int(time.time())}"
+                    tc["id"] = call_id
+                    clean_tool_calls.append({
+                        "id": call_id,
+                        "type": "function",
+                        "function": {
+                            "name": tc["function"]["name"],
+                            "arguments": tc["function"]["arguments"],
+                        },
+                    })
+
+                assistant_msg = {
+                    "role": "assistant",
+                    "content": full_content if full_content.strip() else None,
+                    "tool_calls": clean_tool_calls,
+                }
+                temp_messages.append(assistant_msg)
+
+                tool_results_list = []
                 all_tools_silent = True
 
                 for tool_call in tool_calls:
@@ -2266,7 +2302,12 @@ class AIGeneratorThread(QThread):
                     )
                     if not tool_silent:
                         all_tools_silent = False
-                    tool_results_text += f"\n--- {tool_name} ---\n{results}\n"
+
+                    tool_results_list.append({
+                        "call_id": tool_call["id"],
+                        "name": tool_name,
+                        "content": str(results),
+                    })
 
                 if self._is_stopped:
                     self.finished_signal.emit("")
@@ -2291,18 +2332,16 @@ class AIGeneratorThread(QThread):
                     self.finished_signal.emit("")
                     return
 
-                temp_messages.append(
-                    {
-                        "role": "user",
-                        "content": (
-                            f"[SYSTEM RESULTS]:\n{tool_results_text}\n"
-                            "Reply directly based on these results. "
-                            "CRITICAL: If the user asked you to play, open, or run something and you just located the file, "
-                            "you MUST invoke `open_application(app='...', target='...')` in this turn to actually open it! "
-                            "Do NOT just reply saying you found it or that you are going to play it without executing the tool."
-                        ),
-                    }
-                )
+                # Canonical OpenAI tool response per tool call
+                for res_item in tool_results_list:
+                    temp_messages.append(
+                        {
+                            "role": "tool",
+                            "tool_call_id": res_item["call_id"],
+                            "name": res_item["name"],
+                            "content": res_item["content"],
+                        }
+                    )
 
             self.history_save_signal.emit()
             self.finished_signal.emit(full_content)
