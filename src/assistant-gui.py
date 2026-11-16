@@ -67,6 +67,7 @@ from tools import (
     manage_desktop,
     configure_hyprland,
 )
+from routing import DecisionRouter
 
 urllib3.disable_warnings(urllib3.exceptions.InsecureRequestWarning)
 
@@ -448,147 +449,18 @@ tools = (
 # 🧭 DECISION ROUTER (d3 / System One)
 # ==========================================
 DECISION_CONF = config.get("decision_router", {})
-DECISION_ENABLED = DECISION_CONF.get("enabled", False)
-DECISION_ENDPOINT = DECISION_CONF.get("endpoint", "")
-DECISION_MODEL = DECISION_CONF.get("model", "d3:edge")
-DECISION_TIMEOUT = float(DECISION_CONF.get("timeout", 1.5))
-DECISION_CONFIDENCE_THRESHOLD = float(DECISION_CONF.get("confidence_threshold", 0.60))
+decision_router = DecisionRouter(DECISION_CONF)
+decision_router.register_mcp_tools([t["function"]["name"] for t in mcp_tools])
+DECISION_ENABLED = decision_router.enabled
 
-# Tool categories mapping
-TOOL_CATEGORIES = {
-    "conversational": [],
-    "datetime": ["get_current_time"],
-    "desktop_and_apps": ["open_application", "manage_desktop", "get_system_knowledge"],
-    "filesystem": ["read_file", "write_file", "replace_in_file", "execute_command"],
-    "notes": ["obsidian_search", "obsidian_read", "obsidian_write"],
-    "weather": ["get_weather"],
-    "web_search": ["web_search"] + [t["function"]["name"] for t in mcp_tools],
-}
 
 def resolve_tools_for_query(user_query, recent_context="", base_url=""):
-    """
-    Route incoming user query using the d3:edge decision model (/v1/systemone).
-    Returns (filtered_tools, decision_info_dict). Falls back to (tools, None)
-    if disabled, unreachable, or if decision confidence is below threshold.
-    """
-    if not DECISION_ENABLED or not user_query:
-        return tools, None
-
-    # Derive endpoint from base_url if not explicitly provided or if default
-    endpoint = DECISION_ENDPOINT
-    if not endpoint:
-        if base_url:
-            parsed = urllib.parse.urlparse(base_url)
-            endpoint = f"{parsed.scheme}://{parsed.netloc}/v1/systemone"
-        else:
-            endpoint = "http://127.0.0.1:52625/v1/systemone"
-
-    payload = {
-        "model": DECISION_MODEL,
-        "state": {
-            "user_query": user_query[:1000],
-            "context": recent_context[:1000] if recent_context else "",
-        },
-        "questions": {
-            "category": {
-                "type": "choice",
-                "instructions": (
-                    "Determina qué categoría de herramientas del sistema es requerida para satisfacer la petición del usuario en español teniendo en cuenta el contexto previo. "
-                    "Elige 'conversational' si es charla informal, preguntas teóricas, saludos o explicaciones que no necesitan herramientas."
-                ),
-                "criteria": {
-                    "conversational": "Conversación informal, charla, respuestas teóricas, saludos o explicaciones.",
-                    "datetime": "Preguntas exclusivas sobre qué hora es, qué día es hoy, la fecha actual o zona horaria.",
-                    "desktop_and_apps": "Escritorio Hyprland y aplicaciones: abrir o lanzar aplicaciones o archivos (e.g. abrir cartera.ods con libreoffice, abre chrome, lanza kitty, confirmación afirmativa del usuario como 'si' para abrir o ver un archivo), reproducir música o canciones (reproduce pura dinamita), cerrar ventanas, alternar ventanas flotantes (flota chrome) o cambiar de workspace.",
-                    "filesystem": "Operaciones con archivos y terminal: buscar archivos en el disco (/home, extensiones .ods, .pdf), listar carpetas (lista canciones en descargas/Downloads), leer o escribir archivos, o ejecutar comandos bash.",
-                    "notes": "Buscar o leer notas en la aplicación Obsidian.",
-                    "weather": "Previsión del tiempo, lluvia, temperatura o clima meteorológico en ciudades o regiones (e.g. que tiempo hara en leon).",
-                    "web_search": "Buscar noticias de última hora o información en internet a través de la web.",
-                },
-            },
-            "needs_datetime": {
-                "type": "noul",
-                "instructions": (
-                    "Does resolving this request require knowing the current date, time, weekday, or resolving relative time expressions "
-                    "(e.g. 'hoy', 'ayer', 'antier', 'mañana', 'hace unos días', 'última semana', 'noticias de ayer', 'ficheros de hace 3 días', "
-                    "'today', 'yesterday', 'days ago', 'last week')?"
-                ),
-                "criteria": {
-                    "true": "The user query mentions time, dates, or relative temporal anchors (today, yesterday, ago, current time/date).",
-                    "false": "The user query does not depend on knowing the current date or time.",
-                },
-            },
-        },
-    }
-
-    t_start = time.time()
-    try:
-        req = urllib.request.Request(
-            endpoint,
-            data=json.dumps(payload).encode("utf-8"),
-            headers={"Content-Type": "application/json"},
-            method="POST",
-        )
-        with urllib.request.urlopen(req, timeout=DECISION_TIMEOUT) as response:
-            elapsed_ms = int((time.time() - t_start) * 1000)
-            if response.status == 200:
-                res_data = json.loads(response.read().decode("utf-8"))
-                answers = res_data.get("answers", {})
-
-                # Check category question
-                cat_info = answers.get("category", {})
-                choice = cat_info.get("choice")
-                probabilities = cat_info.get("probabilities", {})
-                confidence = probabilities.get(choice, 1.0) if choice else 0.0
-
-                # Check needs_datetime question (noul: true / false)
-                dt_info = answers.get("needs_datetime", {})
-                dt_choice = str(dt_info.get("choice", "")).lower() in ["true", "yes", "1"]
-                dt_probs = dt_info.get("probabilities", {})
-                dt_confidence = dt_probs.get("true", 0.0) if isinstance(dt_probs, dict) else 0.0
-
-                # Heuristic keyword check as a robust safety net for relative time expressions
-                lower_query = user_query.lower()
-                has_time_keywords = any(
-                    kw in lower_query
-                    for kw in [
-                        "hoy", "ayer", "antier", "mañana", "hace ", "última semana", "este mes",
-                        "qué hora", "que hora", "qué día", "que dia", "en qué fecha", "en que fecha",
-                        "today", "yesterday", "ago", "last week", "current time", "current date"
-                    ]
-                )
-                include_datetime = dt_choice or (dt_confidence > 0.40) or has_time_keywords
-
-                info = {
-                    "choice": choice,
-                    "confidence": confidence,
-                    "needs_datetime": include_datetime,
-                }
-
-                if choice in TOOL_CATEGORIES and confidence >= DECISION_CONFIDENCE_THRESHOLD:
-                    target_names = set(TOOL_CATEGORIES[choice])
-                    if include_datetime and choice != "conversational":
-                        target_names.add("get_current_time")
-
-                    filtered = [t for t in tools if t.get("function", {}).get("name") in target_names]
-                    info["tools_count"] = len(filtered)
-                    info["tools_names"] = [t["function"]["name"] for t in filtered]
-                    logger.info(
-                        f"[Router] Query: '{user_query[:60]}' -> Category: {choice} ({int(confidence*100)}%) | "
-                        f"Tools ({len(filtered)}): {info['tools_names']} | Latency: {elapsed_ms}ms"
-                    )
-                    return filtered, info
-
-                logger.warning(
-                    f"[Router] Confidence too low for '{choice}' ({int(confidence*100)}% < {int(DECISION_CONFIDENCE_THRESHOLD*100)}%). "
-                    f"Passing all {len(tools)} tools as fallback | Latency: {elapsed_ms}ms"
-                )
-                return tools, {"choice": choice, "confidence": confidence, "tools_count": len(tools), "fallback": True}
-    except Exception as e:
-        logger.warning(f"[Router] Bypass/Fallback (Error connecting to {endpoint}): {e}")
-
-    return tools, None
-
+    return decision_router.resolve_tools_for_query(
+        user_query=user_query,
+        available_tools=tools,
+        recent_context=recent_context,
+        base_url=base_url,
+    )
 
 
 def process_prompt(user_query):
