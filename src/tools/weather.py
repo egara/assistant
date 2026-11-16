@@ -85,7 +85,7 @@ def get_weather(location):
                     city = ip_data.get("city", "Tu ubicación")
                     region = ip_data.get("regionName", "")
                     full_name = f"{city} ({region})" if region else city
-            except:
+            except (requests.RequestException, ValueError, KeyError):
                 pass
 
         if lat is not None and lon is not None:

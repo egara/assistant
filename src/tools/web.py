@@ -34,8 +34,8 @@ def deep_web_search(query):
                 for s in soup(["script", "style", "nav", "footer"]):
                     s.extract()
                 out += f"--- {r['title']} ---\n{soup.get_text(separator=' ', strip=True)[:1500]}\n"
-            except:
-                out += f"--- {r['title']} ---\n{r['body']}\n"
+            except (requests.RequestException, Exception):
+                out += f"--- {r['title']} ---\n{r.get('body', '')}\n"
         return out[:5000]
     except Exception as e:
         return f"Error: {e}"

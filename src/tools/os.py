@@ -1,5 +1,6 @@
 """Operating system and filesystem tools for Assistant."""
 
+import getpass
 import os
 import shutil
 import subprocess
@@ -115,9 +116,10 @@ def get_desktop_cache():
     cache = {}
     data_dirs = os.environ.get("XDG_DATA_DIRS", "").split(":")
     # Add standard NixOS profile paths if not in XDG_DATA_DIRS
+    current_user = os.environ.get("USER") or getpass.getuser()
     extra_dirs = [
         os.path.expanduser("~/.nix-profile/share"),
-        f"/etc/profiles/per-user/{os.environ.get('USER', 'egarcia')}/share",
+        f"/etc/profiles/per-user/{current_user}/share",
         "/run/current-system/sw/share",
     ]
     for ed in extra_dirs:
@@ -138,9 +140,9 @@ def get_desktop_cache():
                             content = fp.read()
                             is_terminal = "Terminal=true" in content
                             cache[base_name] = {"is_terminal": is_terminal, "path": full_p}
-                    except:
+                    except OSError:
                         pass
-        except:
+        except OSError:
             pass
 
     _DESKTOP_CACHE = cache

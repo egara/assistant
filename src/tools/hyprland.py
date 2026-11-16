@@ -26,7 +26,7 @@ def get_hyprland_version():
             m = re.search(r"Hyprland\s+([0-9]+\.[0-9]+)", res.stdout)
             if m:
                 return m.group(1)
-    except:
+    except (subprocess.SubprocessError, OSError):
         pass
     return "default"
 
@@ -70,7 +70,7 @@ def save_user_hyprland_recipe(version, action, recipe_dict):
             try:
                 with open(_user_knowledge_file, "r", encoding="utf-8") as f:
                     user_data = json.load(f)
-            except:
+            except (json.JSONDecodeError, OSError):
                 user_data = {}
 
         if version not in user_data:
