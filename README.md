@@ -360,15 +360,16 @@ Requests are resolved through a multi-round agentic loop instead of a fixed two-
 * **Silent completions**: Successful state-changing desktop actions (app launches, `hyprctl dispatch`, `wpctl set-volume`, `brightnessctl set`) still finish immediately with a silent "Hecho." turn without conversational clutter. Read-only inspection commands (`hyprctl clients/binds/monitors`, `wpctl status`, …) keep the agentic loop alive so the model can use their results instead of ending the request mid-investigation.
 * **LLM diagnostics**: Requests, executed tools (with arguments), captured reasoning, and answers are logged to `~/.local/state/assistant/assistant.log`, making model-specific issues easy to debug.
 
-### Modular Tools Architecture (`src/tools/`)
-The tool execution layer is modularized by domain and scope into `src/tools/`:
-* **`time.py`**: Local time/date resolution with IANA timezone support (`get_current_time`).
-* **`weather.py`**: Weather forecast resolution with Open-Meteo & wttr.in fallback (`get_weather`).
-* **`obsidian.py`**: Obsidian Local REST API connector (`search_obsidian`, `read_obsidian`, `write_obsidian`).
-* **`web.py`**: Web search with SearXNG MCP priority and DuckDuckGo fallback (`perform_web_search`).
-* **`os.py`**: OS, desktop app discovery (`uwsm app` / `kitty`), and filesystem operations (`read_file`, `write_file`, `replace_in_file`, `open_application`, `execute_command`).
-* **`knowledge.py`**: SicOS markdown knowledge base queries and dynamic compositor shortcuts (`get_system_knowledge`, `get_sicos_shortcuts`).
-* **`hyprland.py`**: Versioned Hyprland dispatch, recipe management, and auto-discovery (`manage_desktop`, `load_hyprland_recipes`, `discover_and_learn_action`).
+### Modular Architecture (`src/tools/` & `src/routing/`)
+The codebase follows a modular design separating execution tools and query routing:
+* **`src/routing/routing.py`**: Encapsulates `DecisionRouter` for FastFlowLM / d3:edge System One categorization, dynamic category-to-tools resolution, latency measurement, and fallback handling.
+* **`src/tools/time.py`**: Local time/date resolution with IANA timezone support (`get_current_time`).
+* **`src/tools/weather.py`**: Weather forecast resolution with Open-Meteo & wttr.in fallback (`get_weather`).
+* **`src/tools/obsidian.py`**: Obsidian Local REST API connector (`search_obsidian`, `read_obsidian`, `write_obsidian`).
+* **`src/tools/web.py`**: Web search with SearXNG MCP priority and DuckDuckGo fallback (`perform_web_search`).
+* **`src/tools/os.py`**: OS, desktop app discovery (`uwsm app` / `kitty`), and filesystem operations (`read_file`, `write_file`, `replace_in_file`, `open_application`, `execute_command`).
+* **`src/tools/knowledge.py`**: SicOS markdown knowledge base queries and dynamic compositor shortcuts (`get_system_knowledge`, `get_sicos_shortcuts`).
+* **`src/tools/hyprland.py`**: Versioned Hyprland dispatch, recipe management, and auto-discovery (`manage_desktop`, `load_hyprland_recipes`, `discover_and_learn_action`).
 
 ### Built-in & MCP Tools
 1. `get_current_time(timezone)`: Retrieves real-time date, time, weekday, and timezone natively from the host system (with optional IANA timezone conversion, replacing external time MCP servers). Anchors time-sensitive queries, relative dates ('hoy', 'ayer'), and web searches.
