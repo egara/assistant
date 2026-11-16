@@ -19,11 +19,10 @@ from PyQt6.QtCore import Qt, QTimer, pyqtSignal, pyqtSlot, QThread, QObject, QUr
 
 import openai
 from openai import OpenAI, Timeout
-from ddgs import DDGS
 import requests
 import urllib3
-from bs4 import BeautifulSoup
 from langdetect import detect
+from langdetect.lang_detect_exception import LangDetectException
 
 try:
     from mcp.client.sse import sse_client
@@ -333,7 +332,7 @@ else:
             f.write(
                 "<!-- Write your custom context here. Assistant will read this to personalize its answers. -->\n"
             )
-    except:
+    except OSError:
         pass
 
 # ==========================================
@@ -641,7 +640,7 @@ class TTSWorkerThread(QThread):
         audio_path = os.path.join(TEMP_DIR, "tts.wav")
         try:
             detected_lang = detect(self.text)
-        except:
+        except (LangDetectException, Exception):
             detected_lang = "en"
 
         if self._is_stopped:
@@ -708,7 +707,7 @@ class TTSWorkerThread(QThread):
         if self.current_process:
             try:
                 self.current_process.terminate()
-            except:
+            except OSError:
                 pass
 
 
@@ -1376,8 +1375,8 @@ class Backend(QObject):
                     for msg in loaded_history:
                         if msg.get("role") != "system":
                             self.messages.append(msg)
-            except:
-                pass
+            except (json.JSONDecodeError, OSError) as e:
+                logger.warning(f"Failed to load chat history: {e}")
 
         self.messages.insert(0, {"role": "system", "content": system_content})
 
@@ -1389,7 +1388,7 @@ class Backend(QObject):
         if os.path.exists(HISTORY_FILE):
             try:
                 os.remove(HISTORY_FILE)
-            except:
+            except OSError:
                 pass
         self.chatCleared.emit()
         self.messageAdded.emit(
@@ -1497,7 +1496,7 @@ class Backend(QObject):
         if self.rec_process:
             try:
                 self.rec_process.terminate()
-            except:
+            except OSError:
                 pass
 
         subprocess.run(["pkill", "-x", "rec"], stderr=subprocess.DEVNULL)
