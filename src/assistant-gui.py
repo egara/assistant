@@ -68,6 +68,7 @@ from tools import (
     configure_hyprland,
 )
 from routing import DecisionRouter
+from commands import create_default_registry, CommandContext
 
 urllib3.disable_warnings(urllib3.exceptions.InsecureRequestWarning)
 
@@ -1124,7 +1125,25 @@ class Backend(QObject):
         self.timer.timeout.connect(self.check_signals)
         self.timer.start(200)
 
+        # Initialize Slash Commands Registry and Execution Context
+        self.command_registry = create_default_registry()
+        self.command_context = CommandContext(
+            emit_message=lambda role, msg: self.messageAdded.emit(role, msg),
+            reset_session=self.reset_session,
+            toggle_tts=self.toggleTTS,
+            get_app_version=lambda: APP_VERSION,
+            get_models_catalog=lambda: MODELS_CATALOG,
+            get_active_model_key=lambda: self.active_model_key,
+            set_active_model_key=self._set_active_model_key,
+            get_models_list=self.get_models_list,
+            active_model_changed=lambda text: self.activeModelChanged.emit(text),
+            available_models_changed=lambda lst: self.availableModelsChanged.emit(lst),
+        )
+
         self.load_history()
+
+    def _set_active_model_key(self, key: str) -> None:
+        self.active_model_key = key
 
     @pyqtSlot(str, str)
     def handle_message_added(self, role, text):
@@ -1271,73 +1290,18 @@ class Backend(QObject):
     @pyqtSlot()
     def show_help(self):
         """Display available slash commands and shortcuts."""
-        help_text = (
-            f"󰋖 **Comandos disponibles (v{APP_VERSION}):**\n\n"
-            "- **/new** o **/reset**: Inicia una nueva sesión desde cero, eliminando el contexto y limpiando el chat.\n"
-            "- **/clear**: Limpia los mensajes en pantalla y vacía la memoria de la conversación.\n"
-            "- **/model**: Muestra los modelos configurados o alterna al siguiente. Usa `/model <nombre>` para cambiar a uno específico.\n"
-            "- **/voice** o **/tts**: Activa o desactiva la síntesis de voz en las respuestas.\n"
-            "- **/about**: Muestra los detalles de versión y arquitectura de Assistant.\n"
-            "- **/help**: Muestra esta información de ayuda.\n"
-            "- **󰍬 Botón o tecla 'v'**: Pulsa el botón de micrófono o escribe 'v' y pulsa Enter para activar/desactivar el modo de voz.\n"
-            "- **󰕾 / 󰝟 Botón de voz**: Pulsa el botón de altavoz junto a la ayuda para silenciar/activar la voz de respuesta."
-        )
-        self.messageAdded.emit("sys", help_text)
+        self.command_registry.dispatch("/help", self.command_context)
 
     @pyqtSlot()
     def show_about(self):
         """Display version and application info."""
-        about_text = (
-            f"󰘳 **Assistant v{APP_VERSION}**\n\n"
-            "Asistente nativo para el escritorio Hyprland con soporte agéntico, MCP, voz y gestión de ventanas.\n\n"
-            f"- **Versión**: `{APP_VERSION}`\n"
-            "- **Framework**: PyQt6 + QML (Material Design)\n"
-            "- **Pipeline**: FastFlowLM / llama.cpp + Edge-TTS/Piper + Whisper STT"
-        )
-        self.messageAdded.emit("sys", about_text)
+        self.command_registry.dispatch("/about", self.command_context)
 
     @pyqtSlot(str)
     def switch_model(self, target_key=""):
         """List or switch active LLM from the models catalog."""
-        target = (target_key or "").strip().lower()
-        keys = list(MODELS_CATALOG.keys())
-
-        if not target:
-            # If there's more than one, cycle to the next
-            if len(keys) > 1:
-                curr_idx = keys.index(self.active_model_key) if self.active_model_key in keys else 0
-                next_idx = (curr_idx + 1) % len(keys)
-                self.active_model_key = keys[next_idx]
-                curr_cfg = MODELS_CATALOG[self.active_model_key]
-                m_name = curr_cfg.get("name", self.active_model_key)
-                self.activeModelChanged.emit(f"{self.active_model_key} ({m_name})")
-                self.availableModelsChanged.emit(self.get_models_list())
-                self.messageAdded.emit("sys", f"🔄 Modelo cambiado a: **{self.active_model_key}** (`{m_name}`)")
-                return
-
-        # Direct match or listing
-        matched_key = None
-        for k in keys:
-            if target == k.lower() or target == MODELS_CATALOG[k].get("name", "").lower():
-                matched_key = k
-                break
-
-        if matched_key:
-            self.active_model_key = matched_key
-            curr_cfg = MODELS_CATALOG[matched_key]
-            m_name = curr_cfg.get("name", matched_key)
-            self.activeModelChanged.emit(f"{matched_key} ({m_name})")
-            self.availableModelsChanged.emit(self.get_models_list())
-            self.messageAdded.emit("sys", f"🔄 Modelo seleccionado: **{matched_key}** (`{m_name}`)")
-        else:
-            lines = ["🤖 **Modelos disponibles en catálogo:**"]
-            for k in keys:
-                m_info = MODELS_CATALOG[k]
-                m_name = m_info.get("name", k)
-                status = " **[ACTIVO]**" if k == self.active_model_key else ""
-                lines.append(f"- • `{k}`: {m_name} ({m_info.get('base_url')}){status}")
-            lines.append("\nUso: `/model <nombre>` o solo `/model` para alternar al siguiente.")
-            self.messageAdded.emit("sys", "\n".join(lines))
+        cmd = f"/model {target_key}".strip() if target_key else "/model"
+        self.command_registry.dispatch(cmd, self.command_context)
 
     @pyqtSlot()
     def save_history(self):
@@ -1400,26 +1364,7 @@ class Backend(QObject):
     @pyqtSlot(str)
     def processInput(self, text):
         clean_cmd = text.strip()
-        lower_cmd = clean_cmd.lower()
-        if lower_cmd in ["/new", "/reset"]:
-            self.reset_session()
-            return
-        elif lower_cmd == "/clear":
-            self.reset_session()
-            return
-        elif lower_cmd == "/help":
-            self.show_help()
-            return
-        elif lower_cmd == "/about":
-            self.show_about()
-            return
-        elif lower_cmd in ["/voice", "/tts"]:
-            self.toggleTTS()
-            return
-        elif lower_cmd == "/model" or lower_cmd.startswith("/model "):
-            parts = clean_cmd.split(maxsplit=1)
-            arg = parts[1].strip() if len(parts) > 1 else ""
-            self.switch_model(arg)
+        if self.command_registry.dispatch(clean_cmd, self.command_context):
             return
 
         self.interrupt_ai()
