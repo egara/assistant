@@ -106,7 +106,17 @@
                 cp trigger.sh $out/libexec/assistant-unwrapped
                 chmod +x $out/libexec/assistant-unwrapped
 
-                cp src/assistant-gui.py $out/bin/assistant-gui
+                mkdir -p $out/lib/assistant
+                cp -r src/tools $out/lib/assistant/
+                cp src/assistant-gui.py $out/lib/assistant/assistant-gui.py
+
+                cat << 'EOF' > $out/bin/assistant-gui
+                #!/usr/bin/env bash
+                export PYTHONPATH="@out@/lib/assistant:$PYTHONPATH"
+                exec python3 @out@/lib/assistant/assistant-gui.py "$@"
+                EOF
+                substituteInPlace $out/bin/assistant-gui \
+                  --replace "@out@" "$out"
                 chmod +x $out/bin/assistant-gui
 
                 cat << 'EOF' > $out/bin/assistant
