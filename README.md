@@ -352,6 +352,40 @@ Assistant lives unobtrusively in your desktop environment's system tray:
 
 Unlike basic chat interfaces, Assistant parses your prompt and dynamically decides whether it needs to invoke a native tool.
 
+### MCP Servers Configuration & Dynamic Routing
+
+Assistant supports the Model Context Protocol (MCP) using SSE and streamable HTTP transports. Servers are configured under the `"mcp_servers"` key in `~/.config/assistant/config.json`:
+
+```json
+{
+  "mcp_servers": {
+    "searxng": {
+      "url": "http://127.0.0.1:32771/mcp",
+      "transport": "streamable_http",
+      "type": "web_search",
+      "priority": 10,
+      "description": "Internet search via local SearXNG instance."
+    },
+    "company_rag": {
+      "url": "http://127.0.0.1:8501/mcp",
+      "transport": "sse",
+      "type": "rag",
+      "description": "Internal technical documentation, employee onboarding manuals, and corporate wiki."
+    }
+  }
+}
+```
+
+#### MCP Server Attributes & Supported Types:
+* **`type`**: Semantic category for routing and execution:
+  * `"web_search"`: Provider for web searches. Tools from these servers are unified transparently behind the canonical `web_search` tool (ordered by `priority`), with DuckDuckGo as automatic fallback. The LLM only sees a single clean `web_search` schema.
+  * `"rag"` / `"knowledge_base"`: Semantic document retrieval. The Decision Router dynamically registers this category and routes related user queries here.
+  * `"filesystem"` / `"notes"` / `"desktop_and_apps"`: Merges tools directly into standard system categories.
+  * Custom types (e.g. `"github"`, `"home_automation"`): Dynamically registered in the `DecisionRouter` with their provided `description`.
+  * Omitted or `"always"`: Tools are treated as global tools and injected whenever tools are active (non-conversational turns).
+* **`priority`** *(integer, default 0)*: Disambiguates multiple providers of the same type (e.g. multiple search engines).
+* **`description`** *(string)*: Informs the FastFlowLM `d3:edge` router criteria so it accurately routes user intents to this server's tools.
+
 ### Multi-Round Agentic Loop & Reasoning Models
 Requests are resolved through a multi-round agentic loop instead of a fixed two-turn flow:
 
