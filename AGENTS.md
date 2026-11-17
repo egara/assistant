@@ -61,6 +61,9 @@ assistant/
     ├── mcp/                   # Model Context Protocol (MCP) package
     │   ├── __init__.py        # Exports MCPManager and MCP_AVAILABLE
     │   └── manager.py         # SSE/HTTP transport connections and tool discovery
+    ├── llm/                   # Multi-Model LLM Catalog package
+    │   ├── __init__.py        # Exports ModelCatalog
+    │   └── catalog.py         # Model presets, endpoint discovery & selector structure
     └── commands/              # Interactive slash command registry package
         ├── __init__.py        # Factory create_default_registry()
         ├── base.py            # BaseCommand, CommandContext & CommandRegistry

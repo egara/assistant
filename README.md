@@ -360,8 +360,9 @@ Requests are resolved through a multi-round agentic loop instead of a fixed two-
 * **Silent completions**: Successful state-changing desktop actions (app launches, `hyprctl dispatch`, `wpctl set-volume`, `brightnessctl set`) still finish immediately with a silent "Hecho." turn without conversational clutter. Read-only inspection commands (`hyprctl clients/binds/monitors`, `wpctl status`, …) keep the agentic loop alive so the model can use their results instead of ending the request mid-investigation.
 * **LLM diagnostics**: Requests, executed tools (with arguments), captured reasoning, and answers are logged to `~/.local/state/assistant/assistant.log`, making model-specific issues easy to debug.
 
-### Modular Architecture (`src/tools/`, `src/routing/`, `src/commands/` & `src/mcp/`)
-The codebase follows a modular design separating execution tools, intent routing, UI slash commands, and external protocol managers:
+### Modular Architecture (`src/tools/`, `src/routing/`, `src/commands/`, `src/mcp/` & `src/llm/`)
+The codebase follows a modular design separating execution tools, intent routing, UI slash commands, model catalogs, and external protocol managers:
+* **`src/llm/catalog.py`**: Multi-model intelligence manager (`ModelCatalog`) managing presets, OpenAI client instantiation, runtime model catalog, endpoint discovery (`/models`), and QML selector grouping.
 * **`src/mcp/manager.py`**: Model Context Protocol client manager (`MCPManager`) coordinating SSE/HTTP transport connections, dynamic tool discovery, and remote tool execution.
 * **`src/commands/`**: Command/Registry pattern implementing interactive slash commands (`/new`, `/reset`, `/clear`, `/help`, `/about`, `/voice`, `/tts`, `/model`) through decoupled modules (`session.py`, `system.py`, `voice.py`, `model.py`).
 * **`src/routing/routing.py`**: Encapsulates `DecisionRouter` for FastFlowLM / d3:edge System One categorization, dynamic category-to-tools resolution, latency measurement, and fallback handling.
