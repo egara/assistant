@@ -39,6 +39,7 @@ from .hyprland import (
     manage_desktop,
     configure_hyprland,
 )
+from .dispatch import dispatch_tool
 
 __all__ = [
     # Time
@@ -79,4 +80,5 @@ __all__ = [
     "build_manage_desktop_tool",
     "manage_desktop",
     "configure_hyprland",
+    "dispatch_tool",
 ]
