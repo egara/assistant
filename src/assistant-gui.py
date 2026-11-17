@@ -60,6 +60,7 @@ from tools import (
 from routing import DecisionRouter
 from commands import create_default_registry, CommandContext
 from mcp import MCPManager, MCP_AVAILABLE
+from llm import ModelCatalog
 
 urllib3.disable_warnings(urllib3.exceptions.InsecureRequestWarning)
 
@@ -174,138 +175,9 @@ configure_obsidian(api_key=OBSIDIAN_API_KEY, url=OBSIDIAN_URL)
 # ==========================================
 # 🤖 MULTI-MODEL LLM MANAGER & CONFIGURATION
 # ==========================================
-LLM_CONF = config.get("llm", {})
-
-MODELS_CATALOG = {}
-# 1. New multi-model format: {"models": {"gemma": {...}, "glm": {...}}}
-if isinstance(LLM_CONF.get("models"), dict) and LLM_CONF["models"]:
-    for key, spec in LLM_CONF["models"].items():
-        if isinstance(spec, dict):
-            m_key = str(key).strip()
-            m_name = spec.get("name") or spec.get("model") or m_key
-            m_url = spec.get("base_url", "http://127.0.0.1:8080/v1")
-            m_key_auth = spec.get("api_key", "sk-none")
-            m_timeout = float(spec.get("timeout", 180.0))
-            m_vision = spec.get("vision_enabled", True)
-            m_provider = spec.get("provider_name", "local")
-
-            client_inst = OpenAI(
-                base_url=m_url,
-                api_key=m_key_auth,
-                timeout=Timeout(m_timeout, connect=10.0),
-            )
-
-            MODELS_CATALOG[m_key] = {
-                "key": m_key,
-                "name": m_name,
-                "client": client_inst,
-                "base_url": m_url,
-                "api_key": m_key_auth,
-                "vision_enabled": m_vision,
-                "provider_name": m_provider,
-            }
-
-# 2. Backward compatibility: if "models" is not defined, read legacy primary and fallback
-if not MODELS_CATALOG:
-    primary_name = LLM_CONF.get("model", "Hermes-3-8B")
-    primary_url = LLM_CONF.get("base_url", "http://127.0.0.1:8080/v1")
-    primary_key = LLM_CONF.get("api_key", "sk-none")
-    primary_timeout = float(LLM_CONF.get("timeout", 180.0))
-    primary_vision = LLM_CONF.get("vision_enabled", True)
-    primary_provider = LLM_CONF.get("provider_name", "local")
-
-    primary_client = OpenAI(
-        base_url=primary_url,
-        api_key=primary_key,
-        timeout=Timeout(primary_timeout, connect=10.0),
-    )
-
-    primary_id = primary_name.split(":")[0].lower() if ":" in primary_name else "primary"
-    MODELS_CATALOG[primary_id] = {
-        "key": primary_id,
-        "name": primary_name,
-        "client": primary_client,
-        "base_url": primary_url,
-        "api_key": primary_key,
-        "vision_enabled": primary_vision,
-        "provider_name": primary_provider,
-    }
-
-    fallback_conf = LLM_CONF.get("fallback")
-    if isinstance(fallback_conf, dict):
-        fb_name = fallback_conf.get("model", "GLM-5.3-Flash")
-        fb_url = fallback_conf.get("base_url", "http://127.0.0.1:8010/v1")
-        fb_key = fallback_conf.get("api_key", "sk-none")
-        fb_timeout = float(fallback_conf.get("timeout", 180.0))
-        fb_vision = fallback_conf.get("vision_enabled", True)
-        fb_provider = fallback_conf.get("provider_name", "local")
-
-        fb_client = OpenAI(
-            base_url=fb_url,
-            api_key=fb_key,
-            timeout=Timeout(fb_timeout, connect=10.0),
-        )
-
-# Mark presets as favorites / config-defined
-for spec in MODELS_CATALOG.values():
-    spec["is_preset"] = True
-
-def discover_endpoint_models():
-    """
-    Query each configured provider base_url/models endpoint to discover
-    all available models and register them under MODELS_CATALOG.
-    """
-    seen_urls = set()
-    endpoints = []
-    for info in list(MODELS_CATALOG.values()):
-        b_url = info.get("base_url")
-        if not b_url or b_url in seen_urls:
-            continue
-        seen_urls.add(b_url)
-        endpoints.append(info)
-
-    for base_info in endpoints:
-        b_url = base_info.get("base_url", "").rstrip("/")
-        models_url = f"{b_url}/models"
-        p_name = base_info.get("provider_name", "Local")
-        auth_header = f"Bearer {base_info.get('api_key', 'sk-none')}"
-        req = urllib.request.Request(models_url, headers={"Authorization": auth_header})
-        try:
-            with urllib.request.urlopen(req, timeout=2.0) as resp:
-                data = json.loads(resp.read().decode("utf-8"))
-                for m in data.get("data", []):
-                    m_id = m.get("id")
-                    if not m_id:
-                        continue
-                    # Check if already registered
-                    already_in_catalog = any(
-                        info.get("base_url", "").rstrip("/") == b_url and (info.get("name") == m_id or info.get("key") == m_id)
-                        for info in MODELS_CATALOG.values()
-                    )
-                    if not already_in_catalog:
-                        # Build a unique key for the discovered model
-                        MODELS_CATALOG[m_id] = {
-                            "key": m_id,
-                            "name": m_id,
-                            "client": base_info.get("client"),
-                            "base_url": base_info.get("base_url"),
-                            "api_key": base_info.get("api_key"),
-                            "vision_enabled": base_info.get("vision_enabled", True),
-                            "provider_name": p_name,
-                            "is_preset": False,
-                        }
-                        logger.info(f"[Discovery] Found model '{m_id}' on {p_name} ({b_url})")
-        except Exception as e:
-            logger.debug(f"[Discovery] Could not fetch models from {models_url}: {e}")
-
-# Initial synchronous discovery with short timeout
-discover_endpoint_models()
-
-# Determine initial active model
-DEFAULT_MODEL_KEY = LLM_CONF.get("default")
-if not DEFAULT_MODEL_KEY or DEFAULT_MODEL_KEY not in MODELS_CATALOG:
-    DEFAULT_MODEL_KEY = next(iter(MODELS_CATALOG))
-
+model_catalog_manager = ModelCatalog(config.get("llm", {}))
+MODELS_CATALOG = model_catalog_manager.catalog
+DEFAULT_MODEL_KEY = model_catalog_manager.default_model_key
 ACTIVE_MODEL_KEY = DEFAULT_MODEL_KEY
 
 VOICE_CONF = config.get("voice", {})
@@ -1056,66 +928,8 @@ class Backend(QObject):
         self.messageAppended.emit(text)
 
     def get_models_list(self):
-        """
-        Return structured list of items (headers and model entries) for the QML popup.
-        Ordered by:
-          1. Config Presets (Favorites / Defaults)
-          2. Discovered Models grouped by provider / endpoint
-        """
-        res = []
-
-        # 1. Configured Presets Header & Items
-        presets = [info for info in MODELS_CATALOG.values() if info.get("is_preset")]
-        if presets:
-            res.append({
-                "is_header": True,
-                "header_title": "󰚩 MODELOS CONFIGURADOS",
-                "key": "",
-                "name": "",
-                "url": "",
-                "active": False,
-            })
-            for info in presets:
-                k = info.get("key")
-                res.append({
-                    "is_header": False,
-                    "header_title": "",
-                    "key": k,
-                    "name": info.get("name", k),
-                    "url": info.get("base_url", ""),
-                    "active": (k == self.active_model_key),
-                })
-
-        # 2. Group Discovered Models by Provider
-        discovered_by_provider = {}
-        for info in MODELS_CATALOG.values():
-            if not info.get("is_preset"):
-                p_name = info.get("provider_name", "Endpoint Local")
-                b_url = info.get("base_url", "")
-                group_key = f"{p_name} ({b_url})"
-                discovered_by_provider.setdefault(group_key, []).append(info)
-
-        for group_header, items in discovered_by_provider.items():
-            res.append({
-                "is_header": True,
-                "header_title": f"󰒋 {group_header.upper()}",
-                "key": "",
-                "name": "",
-                "url": "",
-                "active": False,
-            })
-            for info in items:
-                k = info.get("key")
-                res.append({
-                    "is_header": False,
-                    "header_title": "",
-                    "key": k,
-                    "name": info.get("name", k),
-                    "url": info.get("base_url", ""),
-                    "active": (k == self.active_model_key),
-                })
-
-        return res
+        """Return structured list of items (headers and model entries) for the QML popup."""
+        return model_catalog_manager.get_structured_models_list(self.active_model_key)
 
     def emit_initial_state(self):
         curr_cfg = MODELS_CATALOG.get(self.active_model_key, {})
