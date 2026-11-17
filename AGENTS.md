@@ -28,7 +28,9 @@ This document serves as the persistent contextual memory for AI agents (and huma
    - Base system modular docs: `src/knowledge/*.md`.
    - User mutable recipe layer: `~/.local/share/assistant/hyprland_knowledge.json`.
    - User mutable modular docs: `~/.config/assistant/knowledge/*.md`.
-   - User runtime state: `~/.local/state/assistant/` (contains `chat_history.json` and `assistant.log`).
+   - User runtime state & logs (debugging):
+     - Log file: `~/.local/state/assistant/assistant.log` (contains routing decisions, tool calls, and LLM completions).
+     - Chat history: `~/.local/state/assistant/chat_history.json` (contains message turns, tool_calls, and role payloads).
    - User configuration: `~/.config/assistant/config.json`.
 
 ---
