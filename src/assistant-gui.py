@@ -21,8 +21,6 @@ import openai
 from openai import OpenAI, Timeout
 import requests
 import urllib3
-from langdetect import detect
-from langdetect.lang_detect_exception import LangDetectException
 
 from tools import (
     get_current_time,
@@ -61,6 +59,7 @@ from routing import DecisionRouter
 from commands import create_default_registry, CommandContext
 from mcp import MCPManager, MCP_AVAILABLE
 from llm import ModelCatalog
+from voice import TTSWorkerThread, stop_all_media_playback
 
 urllib3.disable_warnings(urllib3.exceptions.InsecureRequestWarning)
 
@@ -268,96 +267,6 @@ def process_prompt(user_query):
 
 
 ## QTHREADS
-class TTSWorkerThread(QThread):
-    status_signal = pyqtSignal(str, str)
-    finished_signal = pyqtSignal()
-
-    def __init__(self, text):
-        super().__init__()
-        self.text = text
-        self._is_stopped = False
-        self.current_process = None
-
-    def run(self):
-        engine_type = VOICE_CONF.get("tts_engine", "online")
-        if engine_type in ("none", "disabled", "off", None):
-            self.finished_signal.emit()
-            return
-
-        audio_path = os.path.join(TEMP_DIR, "tts.wav")
-        try:
-            detected_lang = detect(self.text)
-        except (LangDetectException, Exception):
-            detected_lang = "en"
-
-        if self._is_stopped:
-            return
-
-        if engine_type == "online":
-            self.status_signal.emit("󰓃 Speaking...", "#59c2ff")
-            voice = VOICE_CONF.get("tts_online_voices", {}).get(
-                detected_lang, "en-US-GuyNeural"
-            )
-            self.current_process = subprocess.Popen(
-                [
-                    "edge-tts",
-                    "--voice",
-                    voice,
-                    "--rate",
-                    "+5%",
-                    "--text",
-                    self.text,
-                    "--write-media",
-                    audio_path,
-                ],
-                stderr=subprocess.DEVNULL,
-            )
-            if self.current_process:
-                self.current_process.wait()
-        else:
-            local_models = VOICE_CONF.get("tts_local_models", {})
-            model = os.path.expanduser(
-                local_models.get(
-                    detected_lang,
-                    list(local_models.values())[0] if local_models else "",
-                )
-            )
-
-            if os.path.exists(model):
-                self.status_signal.emit("󰓃 Speaking...", "#59c2ff")
-                self.current_process = subprocess.Popen(
-                    ["piper", "--model", model, "--output_file", audio_path],
-                    stdin=subprocess.PIPE,
-                    stderr=subprocess.DEVNULL,
-                )
-                self.current_process.communicate(input=self.text.encode("utf-8"))
-            else:
-                self.status_signal.emit("󰀦 Missing Voice Model", "#f07178")
-                print(
-                    f"[!] Error: Model {model} not found. Please verify your Nix Flake or install.sh downloaded it."
-                )
-
-        if self._is_stopped:
-            return
-
-        if os.path.exists(audio_path):
-            self.current_process = subprocess.Popen(
-                ["pw-play", audio_path], stderr=subprocess.DEVNULL
-            )
-            self.current_process.wait()
-
-        if not self._is_stopped:
-            self.finished_signal.emit()
-
-    def stop(self):
-        self._is_stopped = True
-        if self.current_process:
-            try:
-                self.current_process.terminate()
-            except OSError:
-                pass
-
-
 # Maximum number of chained tool-execution rounds per user request. Strong
 # agentic models (e.g. GLM-5.3-Flash) often chain several searches before
 # answering; the final allowed round withholds the tools schema to force a
@@ -1032,9 +941,7 @@ class Backend(QObject):
             if self.tts_thread.isRunning():
                 self.tts_thread.stop()
 
-        subprocess.run(["pkill", "-x", "pw-play"], stderr=subprocess.DEVNULL)
-        subprocess.run(["pkill", "-x", "piper"], stderr=subprocess.DEVNULL)
-        subprocess.run(["pkill", "-x", "edge-tts"], stderr=subprocess.DEVNULL)
+        stop_all_media_playback()
 
     @pyqtSlot()
     def interrupt_ai(self):
@@ -1407,7 +1314,7 @@ class Backend(QObject):
                 self.tts_thread.stop()
             self.tts_thread.deleteLater()
 
-        self.tts_thread = TTSWorkerThread(tts_text)
+        self.tts_thread = TTSWorkerThread(tts_text, voice_config=VOICE_CONF, temp_dir=TEMP_DIR)
         self.tts_thread.status_signal.connect(self.statusChanged.emit)
         self.tts_thread.finished_signal.connect(self.on_tts_finished)
         self.tts_thread.start()
