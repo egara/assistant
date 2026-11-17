@@ -29,6 +29,14 @@ class MCPManager:
     def __init__(self, servers_config: Optional[Dict[str, Any]] = None):
         self.config: Dict[str, Any] = servers_config or {}
         self.tools: Dict[str, Dict[str, Any]] = {}
+        # Stores categorized server metadata, e.g. type, priority, description
+        self.servers_meta: Dict[str, Dict[str, Any]] = {}
+        for s_name, s_cfg in self.config.items():
+            self.servers_meta[s_name] = {
+                "type": s_cfg.get("type", "").strip().lower(),
+                "priority": int(s_cfg.get("priority", 0)),
+                "description": s_cfg.get("description", "").strip(),
+            }
 
     def discover_tools(self) -> List[Dict[str, Any]]:
         """Connect to configured MCP servers and discover available tools."""
@@ -38,6 +46,8 @@ class MCPManager:
         for server_name, server_cfg in self.config.items():
             url = server_cfg.get("url")
             transport = server_cfg.get("transport", "sse").lower()
+            server_type = server_cfg.get("type", "").strip().lower()
+            priority = int(server_cfg.get("priority", 0))
             if not url:
                 continue
             try:
@@ -49,11 +59,26 @@ class MCPManager:
                         "url": url,
                         "transport": transport,
                         "original_name": name,
+                        "server_type": server_type,
+                        "priority": priority,
                     }
                     discovered.append(t)
             except Exception as e:
                 logger.warning(f"[MCP] Failed to connect to server '{server_name}' at {url}: {e}")
         return discovered
+
+    def get_web_search_tools(self) -> List[Dict[str, Any]]:
+        """Return registered MCP tools configured as type 'web_search', ordered by priority (highest first)."""
+        search_tools = []
+        for name, meta in self.tools.items():
+            if meta.get("server_type") == "web_search":
+                search_tools.append({
+                    "name": name,
+                    "server": meta["server"],
+                    "priority": meta["priority"],
+                })
+        search_tools.sort(key=lambda x: x["priority"], reverse=True)
+        return search_tools
 
     async def _fetch_tools(self, url: str, transport: str) -> List[Dict[str, Any]]:
         client_cm = sse_client(url) if transport == "sse" else streamable_http_client(url)

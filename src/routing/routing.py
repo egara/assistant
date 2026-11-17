@@ -30,6 +30,17 @@ TIME_KEYWORDS = [
 ]
 
 
+DEFAULT_CRITERIA: Dict[str, str] = {
+    "conversational": "Conversación informal, charla, respuestas teóricas, saludos o explicaciones.",
+    "datetime": "Preguntas exclusivas sobre qué hora es, qué día es hoy, la fecha actual o zona horaria.",
+    "desktop_and_apps": "Escritorio Hyprland y aplicaciones: abrir o lanzar aplicaciones o archivos (e.g. abrir cartera.ods con libreoffice, abre chrome, lanza kitty, confirmación afirmativa del usuario como 'si' para abrir o ver un archivo), reproducir música o canciones (reproduce pura dinamita), cerrar ventanas, alternar ventanas flotantes (flota chrome) o cambiar de workspace.",
+    "filesystem": "Operaciones con archivos y terminal: buscar archivos en el disco (/home, extensiones .ods, .pdf), listar carpetas (lista canciones en descargas/Downloads), leer o escribir archivos, o ejecutar comandos bash.",
+    "notes": "Buscar o leer notas en la aplicación Obsidian.",
+    "weather": "Previsión del tiempo, lluvia, temperatura o clima meteorológico en ciudades o regiones (e.g. que tiempo hara en leon).",
+    "web_search": "Buscar noticias de última hora o información en internet a través de la web.",
+}
+
+
 class DecisionRouter:
     """Manages routing of user queries to appropriate tool categories."""
 
@@ -41,12 +52,42 @@ class DecisionRouter:
         self.timeout: float = float(cfg.get("timeout", 1.5))
         self.confidence_threshold: float = float(cfg.get("confidence_threshold", 0.60))
         self.categories: Dict[str, List[str]] = dict(DEFAULT_CATEGORIES)
+        self.criteria: Dict[str, str] = dict(DEFAULT_CRITERIA)
+        self.global_tools: Set[str] = set()
+
+    def register_mcp_servers(self, mcp_manager: Any) -> None:
+        """Register MCP tools dynamically into categories based on server configuration.
+
+        - If server type == 'web_search': tools are handled internally by web_search wrapper.
+        - If server type is in categories or new (e.g. 'rag', 'github'): category is registered with custom criteria.
+        - If server type is 'always' or unspecified: tools are marked as global.
+        """
+        if not mcp_manager or not hasattr(mcp_manager, "tools"):
+            return
+
+        for tool_name, meta in mcp_manager.tools.items():
+            server_type = meta.get("server_type", "")
+            s_meta = mcp_manager.servers_meta.get(meta.get("server", ""), {})
+            description = s_meta.get("description", "") or f"Operaciones y consultas relacionadas con {server_type or meta.get('server')}."
+
+            if not server_type or server_type == "always":
+                self.global_tools.add(tool_name)
+            elif server_type == "web_search":
+                # web_search tools are proxied through the unified web_search function
+                # so we don't expose them separately, but ensure web_search is in the category
+                if "web_search" not in self.categories.setdefault("web_search", []):
+                    self.categories["web_search"].append("web_search")
+            else:
+                # Custom category (e.g., 'rag', 'github', 'home_assistant')
+                cat_tools = self.categories.setdefault(server_type, [])
+                if tool_name not in cat_tools:
+                    cat_tools.append(tool_name)
+                if server_type not in self.criteria:
+                    self.criteria[server_type] = description
 
     def register_mcp_tools(self, tool_names: List[str]) -> None:
-        """Register dynamic MCP tools under the web_search category."""
-        current = set(self.categories.get("web_search", ["web_search"]))
-        current.update(tool_names)
-        self.categories["web_search"] = sorted(list(current))
+        """Backwards compatibility method."""
+        pass
 
     def resolve_endpoint(self, base_url: str = "") -> str:
         """Determine endpoint URL, falling back to base_url or default."""
@@ -87,15 +128,7 @@ class DecisionRouter:
                         "Determina qué categoría de herramientas del sistema es requerida para satisfacer la petición del usuario en español teniendo en cuenta el contexto previo. "
                         "Elige 'conversational' si es charla informal, preguntas teóricas, saludos o explicaciones que no necesitan herramientas."
                     ),
-                    "criteria": {
-                        "conversational": "Conversación informal, charla, respuestas teóricas, saludos o explicaciones.",
-                        "datetime": "Preguntas exclusivas sobre qué hora es, qué día es hoy, la fecha actual o zona horaria.",
-                        "desktop_and_apps": "Escritorio Hyprland y aplicaciones: abrir o lanzar aplicaciones o archivos (e.g. abrir cartera.ods con libreoffice, abre chrome, lanza kitty, confirmación afirmativa del usuario como 'si' para abrir o ver un archivo), reproducir música o canciones (reproduce pura dinamita), cerrar ventanas, alternar ventanas flotantes (flota chrome) o cambiar de workspace.",
-                        "filesystem": "Operaciones con archivos y terminal: buscar archivos en el disco (/home, extensiones .ods, .pdf), listar carpetas (lista canciones en descargas/Downloads), leer o escribir archivos, o ejecutar comandos bash.",
-                        "notes": "Buscar o leer notas en la aplicación Obsidian.",
-                        "weather": "Previsión del tiempo, lluvia, temperatura o clima meteorológico en ciudades o regiones (e.g. que tiempo hara en leon).",
-                        "web_search": "Buscar noticias de última hora o información en internet a través de la web.",
-                    },
+                    "criteria": self.criteria,
                 },
                 "needs_datetime": {
                     "type": "noul",
@@ -153,6 +186,10 @@ class DecisionRouter:
                         target_names: Set[str] = set(self.categories[choice])
                         if include_datetime and choice != "conversational":
                             target_names.add("get_current_time")
+
+                        # Include global tools if the choice requires tools (non-conversational)
+                        if choice != "conversational":
+                            target_names.update(self.global_tools)
 
                         filtered = [
                             t for t in available_tools

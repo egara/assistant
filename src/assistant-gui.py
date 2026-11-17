@@ -207,6 +207,21 @@ mcp_tools = mcp_manager.discover_tools()
 HYPRLAND_RECIPES = load_hyprland_recipes()
 COMMAND_INTENTS = HYPRLAND_RECIPES.get("_command_intents", {})
 
+# Exclude MCP tools that are categorized as 'web_search' from the raw tools list exposed to the LLM.
+# They are accessed transparently via the canonical 'web_search' tool.
+raw_web_mcp_names = {
+    name for name, meta in mcp_manager.tools.items()
+    if meta.get("server_type") == "web_search"
+}
+# Also exclude searxng_web_search specifically if it came from an untyped server
+if "searxng_web_search" in mcp_manager.tools:
+    raw_web_mcp_names.add("searxng_web_search")
+
+exposed_mcp_tools = [
+    t for t in mcp_tools
+    if t.get("function", {}).get("name") not in raw_web_mcp_names
+]
+
 ## TOOLS & LOGIC
 tools = (
     TIME_TOOLS
@@ -216,7 +231,7 @@ tools = (
     + OS_TOOLS
     + KNOWLEDGE_TOOLS
     + [build_manage_desktop_tool(HYPRLAND_RECIPES)]
-    + mcp_tools
+    + exposed_mcp_tools
 )
 
 # ==========================================
@@ -224,7 +239,7 @@ tools = (
 # ==========================================
 DECISION_CONF = config.get("decision_router", {})
 decision_router = DecisionRouter(DECISION_CONF)
-decision_router.register_mcp_tools([t["function"]["name"] for t in mcp_tools])
+decision_router.register_mcp_servers(mcp_manager)
 DECISION_ENABLED = decision_router.enabled
 
 
