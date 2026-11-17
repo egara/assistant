@@ -36,8 +36,8 @@ DEFAULT_CRITERIA: Dict[str, str] = {
     "desktop_and_apps": "Escritorio Hyprland y aplicaciones: abrir o lanzar aplicaciones o archivos (e.g. abrir cartera.ods con libreoffice, abre chrome, lanza kitty, confirmación afirmativa del usuario como 'si' para abrir o ver un archivo), reproducir música o canciones (reproduce pura dinamita), cerrar ventanas, alternar ventanas flotantes (flota chrome) o cambiar de workspace.",
     "filesystem": "Operaciones con archivos y terminal: buscar archivos en el disco (/home, extensiones .ods, .pdf), listar carpetas (lista canciones en descargas/Downloads), leer o escribir archivos, o ejecutar comandos bash.",
     "notes": "Buscar o leer notas en la aplicación Obsidian.",
-    "weather": "Previsión del tiempo, lluvia, temperatura o clima meteorológico en ciudades o regiones (e.g. que tiempo hara en leon).",
-    "web_search": "Buscar noticias de última hora o información en internet a través de la web.",
+    "weather": "Previsión del tiempo, lluvia, temperatura o clima meteorológico en ciudades o regiones (e.g. qué tiempo hará en león). No elegir para eventos, cine, compras o lugares de ocio.",
+    "web_search": "Buscar información actualizada en internet: carteleras de cine, horarios de películas o eventos, cartelera Odeón, tiendas, restaurantes, noticias o páginas web.",
 }
 
 
