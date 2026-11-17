@@ -164,6 +164,18 @@ ApplicationWindow {
                 userScrolledUp = true;
             }
 
+            onMovementEnded: {
+                if (atYEnd) {
+                    userScrolledUp = false;
+                }
+            }
+
+            onContentHeightChanged: {
+                if (!userScrolledUp) {
+                    chatListView.positionViewAtEnd();
+                }
+            }
+
             ScrollBar.vertical: ScrollBar {
                 policy: ScrollBar.AsNeeded
                 contentItem: Rectangle {
