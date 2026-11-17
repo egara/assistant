@@ -48,6 +48,7 @@ assistant/
     ├── knowledge/             # Modular markdown documentation (hardware, apps, shortcuts...)
     ├── tools/                 # Domain-scoped execution tools package
     │   ├── __init__.py        # Public tool definitions & exports
+    │   ├── dispatch.py        # Centralized tool execution & silent completion policy
     │   ├── time.py            # Real-time clock & IANA timezone resolution
     │   ├── weather.py         # Open-Meteo & wttr.in weather forecast tools
     │   ├── obsidian.py        # Obsidian Local REST API integration
@@ -62,8 +63,9 @@ assistant/
     │   ├── __init__.py        # Exports MCPManager and MCP_AVAILABLE
     │   └── manager.py         # SSE/HTTP transport connections and tool discovery
     ├── llm/                   # Multi-Model LLM Catalog package
-    │   ├── __init__.py        # Exports ModelCatalog
-    │   └── catalog.py         # Model presets, endpoint discovery & selector structure
+    │   ├── __init__.py        # Exports ModelCatalog & AIGeneratorThread
+    │   ├── catalog.py         # Model presets, endpoint discovery & selector structure
+    │   └── generator.py       # Multi-round agentic loop worker & reasoning extraction
     ├── voice/                 # Voice synthesis and audio playback package
     │   ├── __init__.py        # Exports TTSWorkerThread & stop_all_media_playback
     │   └── tts.py             # Piper/Edge-TTS synthesis, language detection & playback
