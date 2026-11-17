@@ -58,6 +58,9 @@ assistant/
     ├── routing/               # Decision Router package (System One / FastFlowLM)
     │   ├── __init__.py        # Exports DecisionRouter and category mapping
     │   └── routing.py         # FastFlowLM /v1/systemone d3:edge intent classification
+    ├── mcp/                   # Model Context Protocol (MCP) package
+    │   ├── __init__.py        # Exports MCPManager and MCP_AVAILABLE
+    │   └── manager.py         # SSE/HTTP transport connections and tool discovery
     └── commands/              # Interactive slash command registry package
         ├── __init__.py        # Factory create_default_registry()
         ├── base.py            # BaseCommand, CommandContext & CommandRegistry
