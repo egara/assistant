@@ -64,6 +64,9 @@ assistant/
     ├── llm/                   # Multi-Model LLM Catalog package
     │   ├── __init__.py        # Exports ModelCatalog
     │   └── catalog.py         # Model presets, endpoint discovery & selector structure
+    ├── voice/                 # Voice synthesis and audio playback package
+    │   ├── __init__.py        # Exports TTSWorkerThread & stop_all_media_playback
+    │   └── tts.py             # Piper/Edge-TTS synthesis, language detection & playback
     └── commands/              # Interactive slash command registry package
         ├── __init__.py        # Factory create_default_registry()
         ├── base.py            # BaseCommand, CommandContext & CommandRegistry
