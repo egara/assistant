@@ -81,7 +81,7 @@
               ) voices;
 
               installPhase = ''
-                mkdir -p $out/bin $out/libexec $out/share/assistant/sounds $out/share/assistant/models
+                mkdir -p $out/bin $out/libexec $out/lib/assistant $out/share/assistant/sounds $out/share/assistant/models
 
                 if [ -d "sounds" ] && [ "$(ls -A sounds 2>/dev/null)" ]; then
                   cp sounds/* $out/share/assistant/sounds/
