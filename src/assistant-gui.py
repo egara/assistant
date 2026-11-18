@@ -60,146 +60,42 @@ from commands import create_default_registry, CommandContext
 from mcp import MCPManager, MCP_AVAILABLE
 from llm import ModelCatalog, AIGeneratorThread
 from voice import TTSWorkerThread, stop_all_media_playback
+from properties import PropertiesManager
 
 urllib3.disable_warnings(urllib3.exceptions.InsecureRequestWarning)
 
 # ==========================================
-# ⚙️ CONFIGURATION & PATH RESOLUTION
+# ⚙️ PROPERTIES & CONFIGURATION INITIALIZATION
 # ==========================================
-APP_VERSION = "1.1.0"
-CONFIG_DIR = os.path.expanduser("~/.config/assistant")
-CONFIG_FILE = os.path.join(CONFIG_DIR, "config.json")
-TEMP_DIR = "/tmp/assistant"
-DATA_DIR = os.path.expanduser("~/.local/share/assistant")
-SOUND_DIR = os.path.join(DATA_DIR, "sounds")
-HISTORY_DIR = os.path.expanduser("~/.local/state/assistant")
-HISTORY_FILE = os.path.join(HISTORY_DIR, "chat_history.json")
-LOG_FILE = os.path.join(HISTORY_DIR, "assistant.log")
-USER_KNOWLEDGE_FILE = os.path.join(DATA_DIR, "hyprland_knowledge.json")
-
-os.makedirs(CONFIG_DIR, exist_ok=True)
-os.makedirs(DATA_DIR, exist_ok=True)
-os.makedirs(SOUND_DIR, exist_ok=True)
-os.makedirs(HISTORY_DIR, exist_ok=True)
-
-# Configure rotating file logging and console handler
+props = PropertiesManager()
 logger = logging.getLogger("assistant")
-logger.setLevel(logging.INFO)
-if not logger.handlers:
-    rf_handler = RotatingFileHandler(LOG_FILE, maxBytes=5 * 1024 * 1024, backupCount=3, encoding="utf-8")
-    rf_handler.setFormatter(logging.Formatter("%(asctime)s [%(levelname)s] %(message)s", datefmt="%Y-%m-%d %H:%M:%S"))
-    logger.addHandler(rf_handler)
-    c_handler = logging.StreamHandler(sys.stdout)
-    c_handler.setFormatter(logging.Formatter("%(asctime)s [%(levelname)s] %(message)s", datefmt="%H:%M:%S"))
-    logger.addHandler(c_handler)
 
-# Smart UI & Knowledge Path Resolver
-_base_dir = os.path.dirname(os.path.abspath(__file__))
-qml_paths_to_check = [
-    os.path.join(CONFIG_DIR, "ui.qml"),
-    os.path.join(_base_dir, "ui.qml"),
-    os.path.abspath(os.path.join(_base_dir, "..", "share", "assistant", "ui.qml")),
-    os.path.expanduser("~/.local/share/assistant/ui.qml"),
-]
-
-# Factory (system/immutable) knowledge paths
-system_knowledge_paths = [
-    os.path.join(_base_dir, "hyprland_knowledge.json"),
-    os.path.abspath(os.path.join(_base_dir, "..", "share", "assistant", "hyprland_knowledge.json")),
-]
-
-# Modular knowledge directory paths (Config directory first, with factory fallback)
-KNOWLEDGE_DIR = os.path.join(CONFIG_DIR, "knowledge")
-SYSTEM_KNOWLEDGE_DIR = os.path.join(_base_dir, "knowledge")
-os.makedirs(KNOWLEDGE_DIR, exist_ok=True)
-
-# Seed user modular knowledge files from factory if they do not exist yet
-if os.path.exists(SYSTEM_KNOWLEDGE_DIR):
-    for f_name in os.listdir(SYSTEM_KNOWLEDGE_DIR):
-        src_k_file = os.path.join(SYSTEM_KNOWLEDGE_DIR, f_name)
-        dst_k_file = os.path.join(KNOWLEDGE_DIR, f_name)
-        if os.path.isfile(src_k_file) and not os.path.exists(dst_k_file):
-            try:
-                shutil.copyfile(src_k_file, dst_k_file)
-            except Exception as e:
-                print(f"[Knowledge] Notice: could not seed {f_name}: {e}")
-
-SYSTEM_KNOWLEDGE_FILE = None
-for path in system_knowledge_paths:
-    if os.path.exists(path):
-        SYSTEM_KNOWLEDGE_FILE = path
-        break
-
-# Configure knowledge module paths
-configure_knowledge(user_dir=KNOWLEDGE_DIR, system_dir=SYSTEM_KNOWLEDGE_DIR)
-
-# Configure hyprland module recipe file locations
-configure_hyprland(system_knowledge_file=SYSTEM_KNOWLEDGE_FILE, user_knowledge_file=USER_KNOWLEDGE_FILE)
-
-# Seed user knowledge file from factory if it does not exist yet
-if SYSTEM_KNOWLEDGE_FILE and not os.path.exists(USER_KNOWLEDGE_FILE):
-    try:
-        shutil.copyfile(SYSTEM_KNOWLEDGE_FILE, USER_KNOWLEDGE_FILE)
-    except Exception as e:
-        print(f"[Hyprland Knowledge] Notice: could not seed user knowledge: {e}")
-
-QML_FILE = None
-for path in qml_paths_to_check:
-    if os.path.exists(path):
-        QML_FILE = path
-        break
-
-if not QML_FILE:
+if not props.qml_file:
     print(
         "\033[1;31m[!] Error: ui.qml not found. Please ensure the frontend file is downloaded.\033[0m"
     )
     sys.exit(1)
 
-if not os.path.exists(CONFIG_FILE):
-    print(f"\033[1;31m[!] Configuration file not found at {CONFIG_FILE}.\033[0m")
+if not os.path.exists(props.config_file):
+    print(f"\033[1;31m[!] Configuration file not found at {props.config_file}.\033[0m")
     sys.exit(1)
 
-with open(CONFIG_FILE, "r") as f:
-    config = json.load(f)
+# Configure knowledge and hyprland modules
+configure_knowledge(user_dir=props.knowledge_dir, system_dir=props.system_knowledge_dir)
+configure_hyprland(system_knowledge_file=props.system_knowledge_file, user_knowledge_file=props.user_knowledge_file)
 
-LLM_HISTORY_DURATION_MINS = config.get("llm", {}).get("history_duration_minutes", 15)
-OBSIDIAN_API_KEY = config.get("obsidian", {}).get("api_key", "")
-OBSIDIAN_URL = config.get("obsidian", {}).get("url", "https://127.0.0.1:27124")
-OBSIDIAN_HEADERS = {
-    "Authorization": f"Bearer {OBSIDIAN_API_KEY}",
-    "Accept": "application/json",
-}
-configure_obsidian(api_key=OBSIDIAN_API_KEY, url=OBSIDIAN_URL)
+# Configure Obsidian tool
+configure_obsidian(api_key=props.obsidian_api_key, url=props.obsidian_url)
 
 # ==========================================
 # 🤖 MULTI-MODEL LLM MANAGER & CONFIGURATION
 # ==========================================
-model_catalog_manager = ModelCatalog(config.get("llm", {}))
+model_catalog_manager = ModelCatalog(props.llm_config)
 MODELS_CATALOG = model_catalog_manager.catalog
 DEFAULT_MODEL_KEY = model_catalog_manager.default_model_key
-ACTIVE_MODEL_KEY = DEFAULT_MODEL_KEY
+props.set_active_model_key(DEFAULT_MODEL_KEY)
 
-VOICE_CONF = config.get("voice", {})
-MCP_SERVERS_CONF = config.get("mcp_servers", {})
-
-CONTEXT_PATH = os.path.expanduser(
-    config.get("llm", {}).get("system_context", "~/.config/assistant/context.md")
-)
-USER_CONTEXT = ""
-if os.path.exists(CONTEXT_PATH):
-    with open(CONTEXT_PATH, "r", encoding="utf-8") as f:
-        USER_CONTEXT = f.read().strip()
-else:
-    try:
-        os.makedirs(os.path.dirname(CONTEXT_PATH), exist_ok=True)
-        with open(CONTEXT_PATH, "w", encoding="utf-8") as f:
-            f.write(
-                "<!-- Write your custom context here. Assistant will read this to personalize its answers. -->\n"
-            )
-    except OSError:
-        pass
-
-mcp_manager = MCPManager(MCP_SERVERS_CONF)
+mcp_manager = MCPManager(props.mcp_servers_config)
 mcp_tools = mcp_manager.discover_tools()
 
 # Load once at startup: recipe actions drive the manage_desktop tool schema and
@@ -237,8 +133,7 @@ tools = (
 # ==========================================
 # 🧭 DECISION ROUTER (d3 / System One)
 # ==========================================
-DECISION_CONF = config.get("decision_router", {})
-decision_router = DecisionRouter(DECISION_CONF)
+decision_router = DecisionRouter(props.decision_router_config)
 decision_router.register_mcp_servers(mcp_manager)
 DECISION_ENABLED = decision_router.enabled
 
@@ -311,7 +206,8 @@ class Backend(QObject):
         self.is_recording = False
         self.rec_process = None
         self.messages = []
-        self.active_model_key = ACTIVE_MODEL_KEY
+        props.set_voice_mode(self.is_voice_mode)
+        props.set_tts_enabled(self.tts_enabled)
 
         self.timer = QTimer()
         self.timer.timeout.connect(self.check_signals)
@@ -323,9 +219,9 @@ class Backend(QObject):
             emit_message=lambda role, msg: self.messageAdded.emit(role, msg),
             reset_session=self.reset_session,
             toggle_tts=self.toggleTTS,
-            get_app_version=lambda: APP_VERSION,
+            get_app_version=lambda: props.version,
             get_models_catalog=lambda: MODELS_CATALOG,
-            get_active_model_key=lambda: self.active_model_key,
+            get_active_model_key=lambda: props.active_model_key,
             set_active_model_key=self._set_active_model_key,
             get_models_list=self.get_models_list,
             active_model_changed=lambda text: self.activeModelChanged.emit(text),
@@ -335,7 +231,27 @@ class Backend(QObject):
         self.load_history()
 
     def _set_active_model_key(self, key: str) -> None:
-        self.active_model_key = key
+        props.set_active_model_key(key)
+
+    @property
+    def active_model_key(self) -> str:
+        return props.active_model_key
+
+    @property
+    def tts_enabled(self) -> bool:
+        return props.tts_enabled
+
+    @tts_enabled.setter
+    def tts_enabled(self, val: bool) -> None:
+        props.set_tts_enabled(val)
+
+    @property
+    def is_voice_mode(self) -> bool:
+        return props.is_voice_mode
+
+    @is_voice_mode.setter
+    def is_voice_mode(self, val: bool) -> None:
+        props.set_voice_mode(val)
 
     @pyqtSlot(str, str)
     def handle_message_added(self, role, text):
@@ -383,19 +299,19 @@ class Backend(QObject):
             "`get_current_time` to frame your search queries and final report. NEVER revert to pre-training cutoff dates or assume past years.\n"
             "- Keep answers concise, natural, and conversational."
         )
-        if USER_CONTEXT and not USER_CONTEXT.startswith("<!--"):
-            system_content += f"\n\n### USER CONTEXT:\n{USER_CONTEXT}"
+        if props.user_context and not props.user_context.startswith("<!--"):
+            system_content += f"\n\n### USER CONTEXT:\n{props.user_context}"
         return system_content
 
     def load_history(self):
         system_content = self._build_system_prompt()
         self.messages = []
-        if os.path.exists(HISTORY_FILE) and (
-            time.time() - os.path.getmtime(HISTORY_FILE)
-            < (LLM_HISTORY_DURATION_MINS * 60)
+        if os.path.exists(props.history_file) and (
+            time.time() - os.path.getmtime(props.history_file)
+            < (props.history_duration_minutes * 60)
         ):
             try:
-                with open(HISTORY_FILE, "r") as f:
+                with open(props.history_file, "r") as f:
                     loaded_history = json.load(f)
                     for msg in loaded_history:
                         if msg.get("role") != "system":
@@ -410,9 +326,9 @@ class Backend(QObject):
         """Reset conversation context and clear screen."""
         self.interrupt_ai()
         self.messages = [{"role": "system", "content": self._build_system_prompt()}]
-        if os.path.exists(HISTORY_FILE):
+        if os.path.exists(props.history_file):
             try:
-                os.remove(HISTORY_FILE)
+                os.remove(props.history_file)
             except OSError:
                 pass
         self.chatCleared.emit()
@@ -441,7 +357,7 @@ class Backend(QObject):
     def save_history(self):
         tail = [m for m in self.messages if m.get("role") != "system"]
         history_to_save = [self.messages[0]] + tail[-8:]
-        with open(HISTORY_FILE, "w") as f:
+        with open(props.history_file, "w") as f:
             json.dump(history_to_save, f)
 
     def stop_media_playback(self):
@@ -478,8 +394,8 @@ class Backend(QObject):
         self._input_enabled = True
 
     def check_signals(self):
-        if os.path.exists(os.path.join(TEMP_DIR, "gui_signal")):
-            os.remove(os.path.join(TEMP_DIR, "gui_signal"))
+        if os.path.exists(os.path.join(props.temp_dir, "gui_signal")):
+            os.remove(os.path.join(props.temp_dir, "gui_signal"))
             if (
                 self.is_recording
                 or not getattr(self, "_input_enabled", True)
@@ -546,7 +462,7 @@ class Backend(QObject):
         self.voiceStateChanged.emit(True)
         self.statusChanged.emit("󰍬 Listening... (Say 'Stop' to end)", "#7fd962")
         subprocess.run(
-            ["pw-play", os.path.join(SOUND_DIR, "start.wav")], stderr=subprocess.DEVNULL
+            ["pw-play", os.path.join(props.sound_dir, "start.wav")], stderr=subprocess.DEVNULL
         )
         threading.Thread(target=self.record_with_silence).start()
 
@@ -556,8 +472,9 @@ class Backend(QObject):
             self.rec_process.terminate()
 
     def record_with_silence(self):
-        silence_duration = str(VOICE_CONF.get("silence_duration", "0.8"))
-        silence_threshold = str(VOICE_CONF.get("silence_threshold", "1%"))
+        voice_conf = props.voice_config
+        silence_duration = str(voice_conf.get("silence_duration", "0.8"))
+        silence_threshold = str(voice_conf.get("silence_threshold", "1%"))
         self.rec_process = subprocess.Popen(
             [
                 "rec",
@@ -570,7 +487,7 @@ class Backend(QObject):
                 "16",
                 "-e",
                 "signed-integer",
-                os.path.join(TEMP_DIR, "voice_reply.wav"),
+                os.path.join(props.temp_dir, "voice_reply.wav"),
                 "silence",
                 "1",
                 "0.1",
@@ -584,14 +501,14 @@ class Backend(QObject):
         if self.is_recording:
             self.is_recording = False
             subprocess.run(
-                ["pw-play", os.path.join(SOUND_DIR, "stop.wav")],
+                ["pw-play", os.path.join(props.sound_dir, "stop.wav")],
                 stderr=subprocess.DEVNULL,
             )
             self.transcribe_audio()
 
     def transcribe_audio(self):
         self.statusChanged.emit("󰑮 Transcribing...", "#e5b454")
-        wav_file = os.path.join(TEMP_DIR, "voice_reply.wav")
+        wav_file = os.path.join(props.temp_dir, "voice_reply.wav")
         transcript = ""
 
         # Validate that the recorded audio contains actual sound and is long enough
@@ -626,7 +543,8 @@ class Backend(QObject):
             logger.warning(f"[ASR] Error checking audio energy: {e}")
 
         # Check ASR configuration (e.g. FastFlowLM / OpenAI-compatible endpoint)
-        asr_conf = VOICE_CONF.get("asr", {})
+        voice_conf = props.voice_config
+        asr_conf = voice_conf.get("asr", {})
         asr_enabled = asr_conf.get("enabled", True) if isinstance(asr_conf, dict) else False
         asr_endpoint = asr_conf.get("endpoint") if isinstance(asr_conf, dict) else None
 
@@ -670,7 +588,7 @@ class Backend(QObject):
         # Fallback to local whisper-cli if remote ASR was not used or failed
         if not transcript and os.path.exists(wav_file):
             whisper_model = os.path.expanduser(
-                VOICE_CONF.get("whisper_model")
+                voice_conf.get("whisper_model")
                 or "~/.local/share/assistant/models/ggml-small.bin"
             )
             if os.path.exists(whisper_model):
@@ -829,7 +747,9 @@ class Backend(QObject):
                 self.tts_thread.stop()
             self.tts_thread.deleteLater()
 
-        self.tts_thread = TTSWorkerThread(tts_text, voice_config=VOICE_CONF, temp_dir=TEMP_DIR)
+        self.tts_thread = TTSWorkerThread(
+            tts_text, voice_config=props.voice_config, temp_dir=props.temp_dir
+        )
         self.tts_thread.status_signal.connect(self.statusChanged.emit)
         self.tts_thread.finished_signal.connect(self.on_tts_finished)
         self.tts_thread.start()
@@ -977,7 +897,7 @@ if __name__ == "__main__":
     backend = Backend(initial_q, launch_m)
 
     engine.rootContext().setContextProperty("backend", backend)
-    engine.load(QUrl.fromLocalFile(QML_FILE))
+    engine.load(QUrl.fromLocalFile(props.qml_file))
 
     if not engine.rootObjects():
         sys.exit(-1)

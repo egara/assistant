@@ -515,8 +515,9 @@ Requests are resolved through a multi-round agentic loop instead of a fixed two-
 * **Silent completions**: Successful state-changing desktop actions (app launches, `hyprctl dispatch`, `wpctl set-volume`, `brightnessctl set`) still finish immediately with a silent "Hecho." turn without conversational clutter. Read-only inspection commands (`hyprctl clients/binds/monitors`, `wpctl status`, …) keep the agentic loop alive so the model can use their results instead of ending the request mid-investigation.
 * **LLM diagnostics**: Requests, executed tools (with arguments), captured reasoning, and answers are logged to `~/.local/state/assistant/assistant.log`, making model-specific issues easy to debug.
 
-### Modular Architecture (`src/tools/`, `src/routing/`, `src/commands/`, `src/mcp/`, `src/llm/` & `src/voice/`)
-The codebase follows a modular design separating execution tools, intent routing, UI slash commands, model catalogs, voice engines, and external protocol managers:
+### Modular Architecture (`src/properties/`, `src/tools/`, `src/routing/`, `src/commands/`, `src/mcp/`, `src/llm/` & `src/voice/`)
+The codebase follows a modular design separating configuration and properties, execution tools, intent routing, UI slash commands, model catalogs, voice engines, and external protocol managers:
+* **`src/properties/manager.py`**: Singleton Properties & Configuration Manager (`PropertiesManager`) centralizing path resolution (config, data, sounds, state, knowledge, QML), loading and managing `config.json`, user context (`context.md`), dynamic runtime properties (`active_model_key`, `tts_enabled`, `is_voice_mode`), and property change listeners.
 * **`src/voice/tts.py`**: Audio and speech synthesis worker (`TTSWorkerThread`, `stop_all_media_playback`) managing Edge-TTS / Piper ONNX local execution, language detection, and PipeWire playback.
 * **`src/llm/generator.py`**: Multi-round agentic loop worker (`AIGeneratorThread`, `extract_reasoning`), streaming tokens, DeepSeek/GLM reasoning capture, command approval safety checks, and loop prevention.
 * **`src/llm/catalog.py`**: Multi-model intelligence manager (`ModelCatalog`) managing presets, OpenAI client instantiation, runtime model catalog, endpoint discovery (`/models`), and QML selector grouping.

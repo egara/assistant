@@ -48,6 +48,9 @@ assistant/
     ├── ui.qml                 # Native QtQuick / Material Design graphical user interface
     ├── hyprland_knowledge.json# Built-in Hyprland action recipes & command intents
     ├── knowledge/             # Modular markdown documentation (hardware, apps, shortcuts...)
+    ├── properties/            # Singleton Properties & Configuration Manager package
+    │   ├── __init__.py        # Exports PropertiesManager
+    │   └── manager.py         # Centralized paths, config loading, dynamic state & listeners
     ├── tools/                 # Domain-scoped execution tools package
     │   ├── __init__.py        # Public tool definitions & exports
     │   ├── dispatch.py        # Centralized tool execution & silent completion policy

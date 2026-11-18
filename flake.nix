@@ -107,6 +107,7 @@
                 chmod +x $out/libexec/assistant-unwrapped
 
                 mkdir -p $out/lib/assistant
+                cp -r src/properties $out/lib/assistant/
                 cp -r src/tools $out/lib/assistant/
                 cp -r src/routing $out/lib/assistant/
                 cp -r src/commands $out/lib/assistant/
