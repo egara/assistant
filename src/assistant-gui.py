@@ -226,9 +226,22 @@ class Backend(QObject):
             get_models_list=self.get_models_list,
             active_model_changed=lambda text: self.activeModelChanged.emit(text),
             available_models_changed=lambda lst: self.availableModelsChanged.emit(lst),
+            get_available_roles=lambda: props.get_available_roles(),
+            get_active_role=lambda: props.active_role,
+            set_active_role=self._set_active_role,
         )
 
         self.load_history()
+
+    def _set_active_role(self, role_id: str) -> bool:
+        success = props.set_active_role(role_id)
+        if success:
+            new_prompt = self._build_system_prompt()
+            if self.messages and self.messages[0].get("role") == "system":
+                self.messages[0]["content"] = new_prompt
+            else:
+                self.messages.insert(0, {"role": "system", "content": new_prompt})
+        return success
 
     def _set_active_model_key(self, key: str) -> None:
         props.set_active_model_key(key)
@@ -299,6 +312,11 @@ class Backend(QObject):
             "`get_current_time` to frame your search queries and final report. NEVER revert to pre-training cutoff dates or assume past years.\n"
             "- Keep answers concise, natural, and conversational."
         )
+
+        role_prompt = props.active_role_prompt
+        if role_prompt and not role_prompt.startswith("<!--"):
+            system_content += f"\n\n### ACTIVE ROLE ({props.active_role.upper()}):\n{role_prompt}"
+
         if props.user_context and not props.user_context.startswith("<!--"):
             system_content += f"\n\n### USER CONTEXT:\n{props.user_context}"
         return system_content

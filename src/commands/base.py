@@ -23,6 +23,9 @@ class CommandContext:
         get_models_list: Callable[[], List[str]],
         active_model_changed: Callable[[str], None],
         available_models_changed: Callable[[List[str]], None],
+        get_available_roles: Optional[Callable[[], Dict[str, Any]]] = None,
+        get_active_role: Optional[Callable[[], str]] = None,
+        set_active_role: Optional[Callable[[str], bool]] = None,
     ):
         self.emit_message = emit_message
         self.reset_session = reset_session
@@ -34,6 +37,9 @@ class CommandContext:
         self.get_models_list = get_models_list
         self.active_model_changed = active_model_changed
         self.available_models_changed = available_models_changed
+        self.get_available_roles = get_available_roles or (lambda: {})
+        self.get_active_role = get_active_role or (lambda: "default")
+        self.set_active_role = set_active_role or (lambda r: False)
 
 
 class BaseCommand(ABC):

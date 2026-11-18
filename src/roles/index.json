@@ -1,0 +1,9 @@
+{
+  "roles": {
+    "default": {
+      "name": "Default",
+      "description": "Asistente de escritorio estándar y equilibrado para SicOS / Hyprland.",
+      "file": "default.md"
+    }
+  }
+}

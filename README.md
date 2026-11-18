@@ -444,6 +444,7 @@ Assistant features a clean Material Design GUI styled with **SicOS Nerd Font** i
 ### Built-in Slash Commands & Shortcuts
 You can type the following commands directly into the prompt box:
 * **/model**: Lists all available configured models indicating which one is active, or toggles to the next model in the list. Use `/model <name>` (e.g. `/model glm`) to switch directly to a specific model.
+* **/role**: Lists all available system and user roles indicating which one is active. Use `/role <nombre>` (e.g. `/role news`, `/role default`) to switch roles dynamically and alter the system prompt.
 * **/voice** or **/tts**: Toggles text-to-speech spoken audio output on/off.
 * **/about**: Displays application version and architectural details.
 * **/new** or **/reset**: Resets the current conversation context, wipes the chat memory file, and starts a fresh session.
@@ -451,6 +452,31 @@ You can type the following commands directly into the prompt box:
 * **/help**: Displays an interactive help modal with quick command tips.
 * **`v`**: Typing `v` and pressing Enter instantly toggles push-to-talk voice recording mode.
 * **Speaker Button (`󰕾` / `󰝟`)**: Dedicated button next to the help button that toggles TTS audio output on demand (disabled by default on startup).
+
+---
+
+## 🎭 Roles & Persona Customization (`/role`)
+
+Assistant supports specialized **Roles** that adjust the model's behavior, instructions, and system prompt dynamically without restarting the application:
+
+### Hierarchy & Discovery
+1. **System Roles (`src/roles/`)**:
+   - The system ships with a base `default` role (`default.md` and `index.json`).
+2. **User Roles (`~/.config/assistant/roles/`)**:
+   - **Overriding `default`**: To customize the base role, simply create `~/.config/assistant/roles/default.md`. Assistant will prioritize your user file over the built-in system prompt.
+   - **Adding New Roles**: Drop any Markdown file into `~/.config/assistant/roles/` (e.g. `news.md`). You can also create `roles.json` to configure human-readable names and descriptions:
+     ```json
+     {
+       "roles": {
+         "news": {
+           "name": "News Researcher",
+           "description": "Periodista y analista de noticias de actualidad y última hora.",
+           "file": "news.md"
+         }
+       }
+     }
+     ```
+   - **Dynamic Switching**: Use `/role` to list available roles or `/role news` to activate one. The active role instructions are loaded into the context of the active session on the fly.
 
 ### System Tray Integration
 Assistant lives unobtrusively in your desktop environment's system tray:

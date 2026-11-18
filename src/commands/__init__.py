@@ -5,6 +5,7 @@ from .session import SessionCommand
 from .system import HelpCommand, AboutCommand
 from .voice import VoiceCommand
 from .model import ModelCommand
+from .role import RoleCommand
 
 
 def create_default_registry() -> CommandRegistry:
@@ -24,6 +25,9 @@ def create_default_registry() -> CommandRegistry:
     # Model management (/model)
     registry.register(ModelCommand())
 
+    # Role management (/role)
+    registry.register(RoleCommand())
+
     return registry
 
 
@@ -36,5 +40,6 @@ __all__ = [
     "AboutCommand",
     "VoiceCommand",
     "ModelCommand",
+    "RoleCommand",
     "create_default_registry",
 ]

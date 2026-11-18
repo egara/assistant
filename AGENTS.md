@@ -23,11 +23,13 @@ This document serves as the persistent contextual memory for AI agents (and huma
 4. **Nix Packaging & File Synchronization (`flake.nix`)**:
    - Whenever a new Python package directory is created under `src/` (such as `src/tools/`, `src/routing/`, or `src/commands/`), ensure it is installed in `flake.nix` under `$out/lib/assistant/` so that Nix builds and wrapped binaries retain full module access via `PYTHONPATH`.
 
-5. **Knowledge Files & Runtime Paths**:
+5. **Knowledge & Roles Files & Runtime Paths**:
    - Base system recipe knowledge: [`src/hyprland_knowledge.json`](file:///home/egarcia/Development/git/assistant/src/hyprland_knowledge.json).
    - Base system modular docs: `src/knowledge/*.md`.
+   - Base system roles: `src/roles/` (`index.json`, `default.md`).
    - User mutable recipe layer: `~/.local/share/assistant/hyprland_knowledge.json`.
    - User mutable modular docs: `~/.config/assistant/knowledge/*.md`.
+   - User mutable roles layer: `~/.config/assistant/roles/*.md` and `roles.json`.
    - User runtime state & logs (debugging):
      - Log file: `~/.local/state/assistant/assistant.log` (contains routing decisions, tool calls, and LLM completions).
      - Chat history: `~/.local/state/assistant/chat_history.json` (contains message turns, tool_calls, and role payloads).
@@ -48,6 +50,7 @@ assistant/
     ├── ui.qml                 # Native QtQuick / Material Design graphical user interface
     ├── hyprland_knowledge.json# Built-in Hyprland action recipes & command intents
     ├── knowledge/             # Modular markdown documentation (hardware, apps, shortcuts...)
+    ├── roles/                 # Built-in system roles (index.json, default.md)
     ├── properties/            # Singleton Properties & Configuration Manager package
     │   ├── __init__.py        # Exports PropertiesManager
     │   └── manager.py         # Centralized paths, config loading, dynamic state & listeners
@@ -80,7 +83,8 @@ assistant/
         ├── session.py         # /new, /reset, /clear lifecycle commands
         ├── system.py          # /help, /about information commands
         ├── voice.py           # /voice, /tts speech output toggle commands
-        └── model.py           # /model listing & dynamic switching
+        ├── model.py           # /model listing & dynamic switching
+        └── role.py            # /role listing & persona switching
 ```
 
 ### Core Components Details

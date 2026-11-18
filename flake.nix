@@ -99,6 +99,10 @@
                   mkdir -p $out/share/assistant/knowledge
                   cp -r src/knowledge/* $out/share/assistant/knowledge/
                 fi
+                if [ -d "src/roles" ]; then
+                  mkdir -p $out/share/assistant/roles
+                  cp -r src/roles/* $out/share/assistant/roles/
+                fi
 
                 cp ${whisperSmall} $out/share/assistant/models/ggml-small.bin
 
