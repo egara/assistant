@@ -35,6 +35,11 @@
       "type": "lua_repl",
       "script": "local target_win = nil\nlocal id = [[{window}]]\nif id ~= '' then\n  for _, w in ipairs(hl.get_windows()) do\n    if w.address == id or w.class:lower():find(id:lower(), 1, true) or w.title:lower():find(id:lower(), 1, true) then\n      target_win = w\n      break\n    end\n  end\nend\nif target_win then\n  hl.dispatch(hl.dsp.focus({ window = target_win }))\nend\nlocal res = hl.dispatch(hl.dsp.window.center())\nreturn res and res.ok or false",
       "description": "Center window on screen"
+    },
+    "focus_window": {
+      "type": "lua_repl",
+      "script": "local target_win = nil\nlocal id = [[{window}]]\nif id ~= '' then\n  for _, w in ipairs(hl.get_windows()) do\n    if w.address == id or w.class:lower():find(id:lower(), 1, true) or w.title:lower():find(id:lower(), 1, true) then\n      target_win = w\n      break\n    end\n  end\nend\nif target_win then\n  local res = hl.dispatch(hl.dsp.focus({ window = target_win }))\n  return res and res.ok or false\nelse\n  return false\nend",
+      "description": "Focus a specific window (by class, title or address), e.g. 'foco en firefox'"
     }
   },
   "default": {
@@ -62,6 +67,28 @@
       "type": "lua_repl",
       "script": "local target_win = nil\nlocal id = [[{window}]]\nif id ~= '' then\n  for _, w in ipairs(hl.get_windows()) do\n    if w.address == id or w.class:lower():find(id:lower(), 1, true) or w.title:lower():find(id:lower(), 1, true) then\n      target_win = w\n      break\n    end\n  end\nend\nif target_win then\n  hl.dispatch(hl.dsp.focus({ window = target_win }))\nend\nlocal res = hl.dispatch(hl.dsp.window.float())\nreturn res and res.ok or false",
       "description": "Toggle floating mode on specified window or active window"
+    },
+    "focus_window": {
+      "type": "lua_repl",
+      "script": "local target_win = nil\nlocal id = [[{window}]]\nif id ~= '' then\n  for _, w in ipairs(hl.get_windows()) do\n    if w.address == id or w.class:lower():find(id:lower(), 1, true) or w.title:lower():find(id:lower(), 1, true) then\n      target_win = w\n      break\n    end\n  end\nend\nif target_win then\n  local res = hl.dispatch(hl.dsp.focus({ window = target_win }))\n  return res and res.ok or false\nelse\n  return false\nend",
+      "description": "Focus a specific window (by class, title or address), e.g. 'foco en firefox'"
     }
+  },
+  "_command_intents": {
+    "_comment": "Shell commands whose second token starts with one of these prefixes are state-changing actions (may finish silently). Everything else is read-only and keeps the agentic loop alive.",
+    "hyprctl": [
+      "dispatch",
+      "keyword",
+      "reload",
+      "setcursor",
+      "movecursortocorner",
+      "exit"
+    ],
+    "wpctl": [
+      "set-"
+    ],
+    "brightnessctl": [
+      "set"
+    ]
   }
 }

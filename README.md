@@ -39,19 +39,27 @@ nix run github:egara/assistant
 #### Home Manager Integration
 Add the Home Manager module to your configuration to declare your settings, context, and selected voice models:
 
-Add the flake to your configuration:
+Add the flake input:
 ```nix
 assistant.url = "github:egara/assistant";
 ```
+
+##### Option A: Fully Managed via Nix (Default)
+In this mode, Home Manager writes and maintains both `~/.config/assistant/config.json` and `~/.config/assistant/context.md` declaratively:
+
 ```nix
 { inputs, pkgs, ... }: {
   imports = [ inputs.assistant.homeManagerModules.default ];
 
   programs.assistant = {
     enable = true;
+
     context = ''
-    Information about you or your machine
+      You are Assistant, an agentic AI running locally on NixOS with Hyprland.
+      Respond concisely and execute system commands or window actions when asked.
+      Always reply in the user's language.
     '';
+
     settings = {
       llm = {
         model = "gemma4-it:12b";
@@ -65,6 +73,119 @@ assistant.url = "github:egara/assistant";
   };
 }
 ```
+
+##### Option B: Managing Config and Context Locally (Independent of Nix)
+If you already maintain your own `config.json` or `context.md` files locally (e.g. via dotfiles repo, secrets manager, or manual edits) and don't want Home Manager to overwrite or hardcode them, you can disable their generation:
+
+```nix
+{ inputs, pkgs, ... }: {
+  imports = [ inputs.assistant.homeManagerModules.default ];
+
+  programs.assistant = {
+    enable = true;
+
+    # Disable Home Manager generation of config.json and context.md
+    enableConfig = false;
+    enableContext = false;
+  };
+}
+```
+
+When disabled, Assistant will look for your existing local files at:
+* `~/.config/assistant/config.json`
+* `~/.config/assistant/context.md`
+
+##### Starter Templates for Local Files
+
+If you choose to manage your files outside of Nix (`enableConfig = false`, `enableContext = false`), you can use the following templates as a starting point:
+
+###### 1. Template `~/.config/assistant/config.json`
+Create directory `mkdir -p ~/.config/assistant` and save the following structure:
+
+```json
+{
+  "llm": {
+    "default": "local-main",
+    "system_context": "~/.config/assistant/context.md",
+    "models": {
+      "local-main": {
+        "provider_name": "local",
+        "api_key": "sk-none",
+        "base_url": "http://127.0.0.1:52625/v1",
+        "model": "gemma4-it:12b",
+        "vision_enabled": true,
+        "timeout": 120.0
+      },
+      "fast-edge": {
+        "provider_name": "local",
+        "api_key": "sk-none",
+        "base_url": "http://127.0.0.1:8000/v1",
+        "model": "Hermes-3-8B",
+        "vision_enabled": false,
+        "timeout": 60.0
+      }
+    }
+  },
+  "decision_router": {
+    "enabled": false,
+    "endpoint": "http://127.0.0.1:8000/v1/systemone",
+    "model": "d3:edge",
+    "timeout": 1.5,
+    "confidence_threshold": 0.60
+  },
+  "voice": {
+    "tts_engine": "none",
+    "whisper_model": "~/.local/share/assistant/models/ggml-small.bin",
+    "tts_local_models": {
+      "en": "~/.local/share/assistant/models/en_US-lessac-medium.onnx",
+      "es": "~/.local/share/assistant/models/es_ES-sharvard-medium.onnx"
+    },
+    "tts_online_voices": {
+      "en": "en-US-GuyNeural",
+      "es": "es-ES-AlvaroNeural"
+    }
+  },
+  "mcp_servers": {
+    "searxng": {
+      "url": "http://127.0.0.1:32771/mcp",
+      "transport": "streamable_http",
+      "type": "web_search",
+      "priority": 10,
+      "description": "Internet search via local SearXNG instance."
+    }
+  },
+  "obsidian": {
+    "api_key": "YOUR_OBSIDIAN_REST_API_KEY",
+    "url": "https://127.0.0.1:27124"
+  }
+}
+```
+
+###### 2. Template `~/.config/assistant/context.md`
+Create `~/.config/assistant/context.md` with your assistant's personality and instructions:
+
+```markdown
+You are Assistant, an agentic AI desktop companion running locally on Linux (NixOS / Hyprland).
+
+## Guidelines:
+- Respond concisely and execute system commands or window actions when asked.
+- Do not hallucinate. If you do not know something, search the web or consult system knowledge tools.
+- Always reply in the user's preferred language.
+- Silent actions: simple movements and adjustments are applied directly without chatting.
+```
+
+#### Module Options Reference
+
+| Option | Type | Default | Description |
+|---|---|---|---|
+| `programs.assistant.enable` | `boolean` | `false` | Enables Assistant installation and configuration. |
+| `programs.assistant.package` | `package` | `self.packages.${pkgs.stdenv.hostPlatform.system}.default` | The Assistant package derivation to install. |
+| `programs.assistant.enableConfig` | `boolean` | `true` | When `true`, generates `~/.config/assistant/config.json` from `settings`. Set to `false` to use your local config. |
+| `programs.assistant.enableContext` | `boolean` | `true` | When `true`, generates `~/.config/assistant/context.md` from `context`. Set to `false` to use your local context. |
+| `programs.assistant.settings` | `attrs` | `{}` | Key-value settings serialized into `config.json` when `enableConfig = true`. |
+| `programs.assistant.context` | `lines` | `""` | Markdown instructions serialized into `context.md` when `enableContext = true`. |
+
+
 
 ---
 
@@ -352,14 +473,75 @@ Assistant lives unobtrusively in your desktop environment's system tray:
 
 Unlike basic chat interfaces, Assistant parses your prompt and dynamically decides whether it needs to invoke a native tool.
 
+### MCP Servers Configuration & Dynamic Routing
+
+Assistant supports the Model Context Protocol (MCP) using SSE and streamable HTTP transports. Servers are configured under the `"mcp_servers"` key in `~/.config/assistant/config.json`:
+
+```json
+{
+  "mcp_servers": {
+    "searxng": {
+      "url": "http://127.0.0.1:32771/mcp",
+      "transport": "streamable_http",
+      "type": "web_search",
+      "priority": 10,
+      "description": "Internet search via local SearXNG instance."
+    },
+    "company_rag": {
+      "url": "http://127.0.0.1:8501/mcp",
+      "transport": "sse",
+      "type": "rag",
+      "description": "Internal technical documentation, employee onboarding manuals, and corporate wiki."
+    }
+  }
+}
+```
+
+#### MCP Server Attributes & Supported Types:
+* **`type`**: Semantic category for routing and execution:
+  * `"web_search"`: Provider for web searches. Tools from these servers are unified transparently behind the canonical `web_search` tool (ordered by `priority`), with DuckDuckGo as automatic fallback. The LLM only sees a single clean `web_search` schema.
+  * `"rag"` / `"knowledge_base"`: Semantic document retrieval. The Decision Router dynamically registers this category and routes related user queries here.
+  * `"filesystem"` / `"notes"` / `"desktop_and_apps"`: Merges tools directly into standard system categories.
+  * Custom types (e.g. `"github"`, `"home_automation"`): Dynamically registered in the `DecisionRouter` with their provided `description`.
+  * Omitted or `"always"`: Tools are treated as global tools and injected whenever tools are active (non-conversational turns).
+* **`priority`** *(integer, default 0)*: Disambiguates multiple providers of the same type (e.g. multiple search engines).
+* **`description`** *(string)*: Informs the FastFlowLM `d3:edge` router criteria so it accurately routes user intents to this server's tools.
+
+### Multi-Round Agentic Loop & Reasoning Models
+Requests are resolved through a multi-round agentic loop instead of a fixed two-turn flow:
+
+* **Chained tool execution**: Every round executes *all* requested tools (native + MCP) and feeds canonical OpenAI-compliant tool messages (`role: "tool"`, `tool_call_id`) back to the model, maintaining full compatibility with both compact models (e.g. Gemma 4, Llama 3) and large reasoning models. The loop is capped at 4 tool rounds (with automatic loop prevention if identical calls repeat); the final round withholds the tools schema to force a plain text answer.
+* **Reasoning model support**: Reasoning models (GLM / DeepSeek style) stream their chain of thought in a separate `reasoning_content` field. Assistant captures it and surfaces a live "Thinking…" status snippet instead of appearing frozen, and logs it for diagnostics.
+* **Silent completions**: Successful state-changing desktop actions (app launches, `hyprctl dispatch`, `wpctl set-volume`, `brightnessctl set`) still finish immediately with a silent "Hecho." turn without conversational clutter. Read-only inspection commands (`hyprctl clients/binds/monitors`, `wpctl status`, …) keep the agentic loop alive so the model can use their results instead of ending the request mid-investigation.
+* **LLM diagnostics**: Requests, executed tools (with arguments), captured reasoning, and answers are logged to `~/.local/state/assistant/assistant.log`, making model-specific issues easy to debug.
+
+### Modular Architecture (`src/properties/`, `src/tools/`, `src/routing/`, `src/commands/`, `src/mcp/`, `src/llm/` & `src/voice/`)
+The codebase follows a modular design separating configuration and properties, execution tools, intent routing, UI slash commands, model catalogs, voice engines, and external protocol managers:
+* **`src/properties/manager.py`**: Singleton Properties & Configuration Manager (`PropertiesManager`) centralizing path resolution (config, data, sounds, state, knowledge, QML), loading and managing `config.json`, user context (`context.md`), dynamic runtime properties (`active_model_key`, `tts_enabled`, `is_voice_mode`), and property change listeners.
+* **`src/voice/tts.py`**: Audio and speech synthesis worker (`TTSWorkerThread`, `stop_all_media_playback`) managing Edge-TTS / Piper ONNX local execution, language detection, and PipeWire playback.
+* **`src/llm/generator.py`**: Multi-round agentic loop worker (`AIGeneratorThread`, `extract_reasoning`), streaming tokens, DeepSeek/GLM reasoning capture, command approval safety checks, and loop prevention.
+* **`src/llm/catalog.py`**: Multi-model intelligence manager (`ModelCatalog`) managing presets, OpenAI client instantiation, runtime model catalog, endpoint discovery (`/models`), and QML selector grouping.
+* **`src/tools/dispatch.py`**: Domain-wide tool dispatcher (`dispatch_tool`) mapping tool calls to implementations and evaluating silent desktop completion policies.
+* **`src/mcp/manager.py`**: Model Context Protocol client manager (`MCPManager`) coordinating SSE/HTTP transport connections, dynamic tool discovery, and remote tool execution.
+* **`src/commands/`**: Command/Registry pattern implementing interactive slash commands (`/new`, `/reset`, `/clear`, `/help`, `/about`, `/voice`, `/tts`, `/model`) through decoupled modules (`session.py`, `system.py`, `voice.py`, `model.py`).
+* **`src/routing/routing.py`**: Encapsulates `DecisionRouter` for FastFlowLM / d3:edge System One categorization, dynamic category-to-tools resolution, latency measurement, and fallback handling.
+* **`src/tools/time.py`**: Local time/date resolution with IANA timezone support (`get_current_time`).
+* **`src/tools/weather.py`**: Weather forecast resolution with Open-Meteo & wttr.in fallback (`get_weather`).
+* **`src/tools/obsidian.py`**: Obsidian Local REST API connector (`search_obsidian`, `read_obsidian`, `write_obsidian`).
+* **`src/tools/web.py`**: Web search with SearXNG MCP priority and DuckDuckGo fallback (`perform_web_search`).
+* **`src/tools/os.py`**: OS, desktop app discovery (`uwsm app` / `kitty`), and filesystem operations (`read_file`, `write_file`, `replace_in_file`, `open_application`, `execute_command`).
+* **`src/tools/knowledge.py`**: SicOS markdown knowledge base queries and dynamic compositor shortcuts (`get_system_knowledge`, `get_sicos_shortcuts`).
+* **`src/tools/hyprland.py`**: Versioned Hyprland dispatch, recipe management, and auto-discovery (`manage_desktop`, `load_hyprland_recipes`, `discover_and_learn_action`).
+
 ### Built-in & MCP Tools
-1. `get_current_time(timezone)`: Retrieves current date, time, weekday, and timezone natively from the host system (with optional IANA timezone conversion, replacing external time MCP servers).
+1. `get_current_time(timezone)`: Retrieves real-time date, time, weekday, and timezone natively from the host system (with optional IANA timezone conversion, replacing external time MCP servers). Anchors time-sensitive queries, relative dates ('hoy', 'ayer'), and web searches.
 2. `open_application(app, target)`: Universally detects installed desktop applications (`.desktop` entries via XDG) and CLI tools (`yazi`, `btop`, etc.). Automatically wraps GUI tools with `uwsm app` for Wayland session consistency and spawns terminal apps inside `kitty`. Silent execution prevents repetitive audio or unnecessary chat turns.
 3. `get_weather(location)`: Fetches precise meteorological data and multi-day forecasts via Open-Meteo's geocoding API with localized WMO status codes.
 4. `manage_desktop(action, target, window_address)`: Hyprland workspace and window manager controller:
    * **Versioned Knowledge Base**: Dynamically detects the installed Hyprland version and chooses the exact dispatcher syntax (e.g., Lua dispatchers for v0.57+).
+   * **KB-Driven Tool Schema**: The `manage_desktop` action enum and descriptions are generated from `hyprland_knowledge.json`, so new or user-learned actions become available to the model without code changes. `_command_intents` in the same file classifies shell commands as state-changing (silent) vs read-only (agentic loop continues).
    * **User Mutable Knowledge Layer**: Learns and saves unknown dispatchers to `~/.local/share/assistant/hyprland_knowledge.json`.
-   * **Window Targeting**: Targets and focuses specific windows for operations such as `close`, `float`, and `fullscreen`.
+   * **Window Targeting**: Targets and focuses specific windows for operations such as `focus_window`, `close`, `float`, and `fullscreen`.
    * **Silent Feedback**: Fast window/workspace movements execute silently without interrupting the voice flow.
 4. `read_file(path)`: Directly reads the contents of any file on the local filesystem.
 5. `write_file(path, content)`: Creates or updates local files with specified content and creates directories if necessary.

@@ -45,7 +45,7 @@
             }:
             pkgs.stdenv.mkDerivation rec {
               pname = "assistant";
-              version = "1.1.0";
+              version = "1.1.1";
 
               src = ./.;
 
@@ -81,7 +81,7 @@
               ) voices;
 
               installPhase = ''
-                mkdir -p $out/bin $out/libexec $out/share/assistant/sounds $out/share/assistant/models
+                mkdir -p $out/bin $out/libexec $out/lib/assistant $out/share/assistant/sounds $out/share/assistant/models
 
                 if [ -d "sounds" ] && [ "$(ls -A sounds 2>/dev/null)" ]; then
                   cp sounds/* $out/share/assistant/sounds/
@@ -91,6 +91,7 @@
                 fi
 
                 cp src/ui.qml $out/share/assistant/ui.qml
+                cp src/ui.qml $out/lib/assistant/ui.qml
                 if [ -f "src/hyprland_knowledge.json" ]; then
                   cp src/hyprland_knowledge.json $out/share/assistant/hyprland_knowledge.json
                 fi
@@ -106,7 +107,23 @@
                 cp trigger.sh $out/libexec/assistant-unwrapped
                 chmod +x $out/libexec/assistant-unwrapped
 
-                cp src/assistant-gui.py $out/bin/assistant-gui
+                mkdir -p $out/lib/assistant
+                cp -r src/properties $out/lib/assistant/
+                cp -r src/tools $out/lib/assistant/
+                cp -r src/routing $out/lib/assistant/
+                cp -r src/commands $out/lib/assistant/
+                cp -r src/mcp $out/lib/assistant/
+                cp -r src/llm $out/lib/assistant/
+                cp -r src/voice $out/lib/assistant/
+                cp src/assistant-gui.py $out/lib/assistant/assistant-gui.py
+
+                cat << 'EOF' > $out/bin/assistant-gui
+                #!/usr/bin/env bash
+                export PYTHONPATH="@out@/lib/assistant:$PYTHONPATH"
+                exec python3 @out@/lib/assistant/assistant-gui.py "$@"
+                EOF
+                substituteInPlace $out/bin/assistant-gui \
+                  --replace "@out@" "$out"
                 chmod +x $out/bin/assistant-gui
 
                 cat << 'EOF' > $out/bin/assistant
@@ -225,6 +242,17 @@
             context = lib.mkOption {
               type = lib.types.lines;
               default = "";
+              description = "System context instructions placed in ~/.config/assistant/context.md.";
+            };
+            enableConfig = lib.mkOption {
+              type = lib.types.bool;
+              default = true;
+              description = "Whether to generate and manage ~/.config/assistant/config.json via Home Manager. Set to false to use an existing local config file.";
+            };
+            enableContext = lib.mkOption {
+              type = lib.types.bool;
+              default = true;
+              description = "Whether to generate and manage ~/.config/assistant/context.md via Home Manager. Set to false to use an existing local context file.";
             };
           };
 
@@ -256,10 +284,12 @@
                 (cfg.package.override { voices = mappedVoices; })
               ];
 
-              xdg.configFile."assistant/config.json" = lib.mkIf (finalSettings != { }) {
+              xdg.configFile."assistant/config.json" = lib.mkIf (cfg.enableConfig && finalSettings != { }) {
                 text = builtins.toJSON finalSettings;
               };
-              xdg.configFile."assistant/context.md" = lib.mkIf (cfg.context != "") { text = cfg.context; };
+              xdg.configFile."assistant/context.md" = lib.mkIf (cfg.enableContext && cfg.context != "") {
+                text = cfg.context;
+              };
             }
           );
         };

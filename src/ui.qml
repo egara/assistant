@@ -164,6 +164,18 @@ ApplicationWindow {
                 userScrolledUp = true;
             }
 
+            onMovementEnded: {
+                if (atYEnd) {
+                    userScrolledUp = false;
+                }
+            }
+
+            onContentHeightChanged: {
+                if (!userScrolledUp) {
+                    chatListView.positionViewAtEnd();
+                }
+            }
+
             ScrollBar.vertical: ScrollBar {
                 policy: ScrollBar.AsNeeded
                 contentItem: Rectangle {
@@ -360,8 +372,11 @@ ApplicationWindow {
 
             // Text Input Box Container
             ScrollView {
+                id: inputScrollView
                 Layout.fillWidth: true
                 Layout.preferredHeight: 54
+                clip: true
+                ScrollBar.vertical.policy: ScrollBar.AsNeeded
                 background: Rectangle {
                     color: "#181d28"
                     radius: 14
@@ -371,13 +386,28 @@ ApplicationWindow {
 
                 TextArea {
                     id: inputBox
+                    width: inputScrollView.availableWidth
                     placeholderText: "Escribe un mensaje o pulsa el micro..."
                     placeholderTextColor: "#4f5a6b"
                     color: "#e6e1cf"
                     font.family: window.monoFont
                     font.pixelSize: window.systemFontSize
                     wrapMode: TextArea.Wrap
-                    padding: 12
+                    verticalAlignment: lineCount <= 1 ? TextEdit.AlignVCenter : TextEdit.AlignTop
+                    leftPadding: 12
+                    rightPadding: 12
+                    topPadding: lineCount <= 1 ? 6 : 8
+                    bottomPadding: lineCount <= 1 ? 6 : 8
+
+                    onCursorRectangleChanged: {
+                        var flick = inputScrollView.contentItem;
+                        if (!flick) return;
+                        if (cursorRectangle.y < flick.contentY) {
+                            flick.contentY = Math.max(0, cursorRectangle.y - topPadding);
+                        } else if (cursorRectangle.y + cursorRectangle.height > flick.contentY + flick.height) {
+                            flick.contentY = Math.min(flick.contentHeight - flick.height, cursorRectangle.y + cursorRectangle.height + bottomPadding - flick.height);
+                        }
+                    }
 
                     Keys.onPressed: event => {
                         if (event.key === Qt.Key_Return && !event.modifiers) {
@@ -659,7 +689,7 @@ ApplicationWindow {
                             }
 
                             Text {
-                                text: "About (v1.1.0)"
+                                text: "About (v1.1.1)"
                                 color: "#828c99"
                                 font.family: window.monoFont
                                 font.pixelSize: 11
