@@ -240,6 +240,17 @@
             context = lib.mkOption {
               type = lib.types.lines;
               default = "";
+              description = "System context instructions placed in ~/.config/assistant/context.md.";
+            };
+            enableConfig = lib.mkOption {
+              type = lib.types.bool;
+              default = true;
+              description = "Whether to generate and manage ~/.config/assistant/config.json via Home Manager. Set to false to use an existing local config file.";
+            };
+            enableContext = lib.mkOption {
+              type = lib.types.bool;
+              default = true;
+              description = "Whether to generate and manage ~/.config/assistant/context.md via Home Manager. Set to false to use an existing local context file.";
             };
           };
 
@@ -271,10 +282,12 @@
                 (cfg.package.override { voices = mappedVoices; })
               ];
 
-              xdg.configFile."assistant/config.json" = lib.mkIf (finalSettings != { }) {
+              xdg.configFile."assistant/config.json" = lib.mkIf (cfg.enableConfig && finalSettings != { }) {
                 text = builtins.toJSON finalSettings;
               };
-              xdg.configFile."assistant/context.md" = lib.mkIf (cfg.context != "") { text = cfg.context; };
+              xdg.configFile."assistant/context.md" = lib.mkIf (cfg.enableContext && cfg.context != "") {
+                text = cfg.context;
+              };
             }
           );
         };

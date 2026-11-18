@@ -49,6 +49,12 @@ assistant.url = "github:egara/assistant";
 
   programs.assistant = {
     enable = true;
+
+    # Optional switches to control file generation (default: true)
+    # Set to false if you already manage config.json or context.md locally:
+    # enableConfig = false;
+    # enableContext = false;
+
     context = ''
     Information about you or your machine
     '';
@@ -65,6 +71,18 @@ assistant.url = "github:egara/assistant";
   };
 }
 ```
+
+#### Module Options Reference
+
+| Option | Type | Default | Description |
+|---|---|---|---|
+| `programs.assistant.enable` | `boolean` | `false` | Enables Assistant installation and configuration. |
+| `programs.assistant.package` | `package` | `self.packages.${pkgs.stdenv.hostPlatform.system}.default` | The Assistant package derivation to install. |
+| `programs.assistant.enableConfig` | `boolean` | `true` | When true, generates `~/.config/assistant/config.json` from `settings`. Disable to manage config locally. |
+| `programs.assistant.enableContext` | `boolean` | `true` | When true, generates `~/.config/assistant/context.md` from `context`. Disable to manage context locally. |
+| `programs.assistant.settings` | `attrs` | `{}` | Key-value settings to serialize into `config.json`. |
+| `programs.assistant.context` | `lines` | `""` | Markdown text instructions to serialize into `context.md`. |
+
 
 ---
 
