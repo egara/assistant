@@ -262,19 +262,32 @@ class AIGeneratorThread(QThread):
                     )
 
                 # Fallback parser for pseudo-XML tool calls
-                tools_offered = bool(request_kwargs.get("tools"))
-                if tools_offered and not tool_calls and "<|tool_call>" in full_content:
-                    raw_call_match = re.search(r"<\|tool_call>.*?call:([a-zA-Z0-9_]+)\((.*?)\).*?<tool_call\|>", full_content)
+                if not tool_calls and "<|tool_call>" in full_content:
+                    raw_call_match = re.search(
+                        r"<\|tool_call>.*?call:([a-zA-Z0-9_]+)(?:[\(\{](.*?)[\)\}])?.*?<tool_call\|>",
+                        full_content,
+                        re.DOTALL
+                    )
                     if raw_call_match:
                         parsed_name = raw_call_match.group(1).strip()
-                        parsed_arg_str = raw_call_match.group(2).strip()
+                        parsed_arg_str = (raw_call_match.group(2) or "").strip()
                         parsed_args = {}
-                        try:
-                            expr = ast.parse(f"func({parsed_arg_str})")
-                            for kw in expr.body[0].value.keywords:
-                                parsed_args[kw.arg] = ast.literal_eval(kw.value)
-                        except Exception as pe:
-                            logger.error(f"[Tool Parser] Error parsing raw args '{parsed_arg_str}': {pe}")
+                        if parsed_arg_str:
+                            if parsed_arg_str.startswith("{") and parsed_arg_str.endswith("}"):
+                                try:
+                                    parsed_args = json.loads(parsed_arg_str)
+                                except Exception:
+                                    pass
+                            if not parsed_args:
+                                try:
+                                    parsed_args = json.loads("{" + parsed_arg_str + "}")
+                                except Exception:
+                                    try:
+                                        expr = ast.parse(f"func({parsed_arg_str})")
+                                        for kw in expr.body[0].value.keywords:
+                                            parsed_args[kw.arg] = ast.literal_eval(kw.value)
+                                    except Exception as pe:
+                                        logger.error(f"[Tool Parser] Error parsing raw args '{parsed_arg_str}': {pe}")
 
                         tool_calls.append({
                             "id": f"call_raw_{int(time.time())}",
@@ -284,7 +297,7 @@ class AIGeneratorThread(QThread):
                                 "arguments": json.dumps(parsed_args),
                             },
                         })
-                        clean_display = re.sub(r"<\|tool_call>.*?<tool_call\|>", "", full_content).strip()
+                        clean_display = re.sub(r"<\|tool_call>.*?<tool_call\|>", "", full_content, flags=re.DOTALL).strip()
                         full_content = clean_display
 
                 if not tool_calls:

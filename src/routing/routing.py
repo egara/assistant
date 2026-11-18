@@ -31,13 +31,13 @@ TIME_KEYWORDS = [
 
 
 DEFAULT_CRITERIA: Dict[str, str] = {
-    "conversational": "Conversación informal, charla, respuestas teóricas, saludos o explicaciones.",
+    "conversational": "Conversación informal, charla, respuestas teóricas, saludos o explicaciones conceptuales sin datos de última hora ni reportes.",
     "datetime": "Preguntas exclusivas sobre qué hora es, qué día es hoy, la fecha actual o zona horaria.",
     "desktop_and_apps": "Escritorio Hyprland y aplicaciones: abrir o lanzar aplicaciones o archivos (e.g. abrir cartera.ods con libreoffice, abre chrome, lanza kitty, confirmación afirmativa del usuario como 'si' para abrir o ver un archivo), reproducir música o canciones (reproduce pura dinamita), cerrar ventanas, alternar ventanas flotantes (flota chrome) o cambiar de workspace.",
     "filesystem": "Operaciones con archivos y terminal: buscar archivos en el disco (/home, extensiones .ods, .pdf), listar carpetas (lista canciones en descargas/Downloads), leer o escribir archivos, o ejecutar comandos bash.",
     "notes": "Buscar o leer notas en la aplicación Obsidian.",
     "weather": "Previsión del tiempo, lluvia, temperatura o clima meteorológico en ciudades o regiones (e.g. qué tiempo hará en león). No elegir para eventos, cine, compras o lugares de ocio.",
-    "web_search": "Buscar información actualizada en internet: carteleras de cine, horarios de películas o eventos, cartelera Odeón, tiendas, restaurantes, noticias o páginas web.",
+    "web_search": "Buscar información actualizada en internet: reportes, noticias del día de hoy, sucesos recientes, última hora, carteleras de cine, horarios de películas o eventos, cartelera Odeón, tiendas, restaurantes o páginas web.",
 }
 
 
@@ -185,6 +185,9 @@ class DecisionRouter:
                     if choice in self.categories and confidence >= self.confidence_threshold:
                         target_names: Set[str] = set(self.categories[choice])
                         if include_datetime and choice != "conversational":
+                            target_names.add("get_current_time")
+                        elif include_datetime and choice == "conversational":
+                            # If conversational but strongly refers to relative time, allow get_current_time
                             target_names.add("get_current_time")
 
                         # Include global tools if the choice requires tools (non-conversational)
