@@ -63,7 +63,7 @@ class PropertiesManager:
 
         # Package Base Dir & Path Resolution
         self.base_dir = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-        self.system_knowledge_dir = os.path.join(self.base_dir, "knowledge")
+        self.system_knowledge_dir = self._resolve_system_knowledge_dir()
         self.system_knowledge_file = self._resolve_system_knowledge_file()
         self.qml_file = self._resolve_qml_file()
 
@@ -111,6 +111,7 @@ class PropertiesManager:
         candidates = [
             os.path.join(self.base_dir, "ui.qml"),
             os.path.abspath(os.path.join(self.base_dir, "..", "share", "assistant", "ui.qml")),
+            os.path.abspath(os.path.join(self.base_dir, "..", "..", "share", "assistant", "ui.qml")),
             os.path.expanduser("~/.local/share/assistant/ui.qml"),
         ]
         for path in candidates:
@@ -122,11 +123,23 @@ class PropertiesManager:
         candidates = [
             os.path.join(self.base_dir, "hyprland_knowledge.json"),
             os.path.abspath(os.path.join(self.base_dir, "..", "share", "assistant", "hyprland_knowledge.json")),
+            os.path.abspath(os.path.join(self.base_dir, "..", "..", "share", "assistant", "hyprland_knowledge.json")),
         ]
         for path in candidates:
             if os.path.exists(path):
                 return path
         return None
+
+    def _resolve_system_knowledge_dir(self) -> str:
+        candidates = [
+            os.path.join(self.base_dir, "knowledge"),
+            os.path.abspath(os.path.join(self.base_dir, "..", "share", "assistant", "knowledge")),
+            os.path.abspath(os.path.join(self.base_dir, "..", "..", "share", "assistant", "knowledge")),
+        ]
+        for path in candidates:
+            if os.path.isdir(path):
+                return path
+        return os.path.join(self.base_dir, "knowledge")
 
     def _seed_user_knowledge(self) -> None:
         # Seed modular markdown knowledge
