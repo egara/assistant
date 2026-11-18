@@ -243,20 +243,20 @@
               type = lib.types.attrs;
               default = { };
             };
-            context = lib.mkOption {
+            defaultRole = lib.mkOption {
               type = lib.types.lines;
               default = "";
-              description = "System context instructions placed in ~/.config/assistant/context.md.";
+              description = "Default role system prompt instructions placed in ~/.config/assistant/roles/default.md.";
             };
             enableConfig = lib.mkOption {
               type = lib.types.bool;
               default = true;
               description = "Whether to generate and manage ~/.config/assistant/config.json via Home Manager. Set to false to use an existing local config file.";
             };
-            enableContext = lib.mkOption {
+            enableDefaultRole = lib.mkOption {
               type = lib.types.bool;
               default = true;
-              description = "Whether to generate and manage ~/.config/assistant/context.md via Home Manager. Set to false to use an existing local context file.";
+              description = "Whether to generate and manage ~/.config/assistant/roles/default.md via Home Manager. Set to false to use an existing local role file.";
             };
           };
 
@@ -291,8 +291,8 @@
               xdg.configFile."assistant/config.json" = lib.mkIf (cfg.enableConfig && finalSettings != { }) {
                 text = builtins.toJSON finalSettings;
               };
-              xdg.configFile."assistant/context.md" = lib.mkIf (cfg.enableContext && cfg.context != "") {
-                text = cfg.context;
+              xdg.configFile."assistant/roles/default.md" = lib.mkIf (cfg.enableDefaultRole && cfg.defaultRole != "") {
+                text = cfg.defaultRole;
               };
             }
           );

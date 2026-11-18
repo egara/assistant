@@ -17,7 +17,7 @@ class PropertiesManager:
     - Path resolution (Config, Data, State, Knowledge, Sounds, QML)
     - Configuration loading (~/.config/assistant/config.json)
     - Dynamic runtime properties (active model, voice/TTS states, router status)
-    - User context (~/.config/assistant/context.md)
+    - Roles management (system & user roles)
     - Change listeners / observer callbacks for dynamic settings
     """
 
@@ -75,11 +75,7 @@ class PropertiesManager:
         # 3. Load config.json
         self._config: Dict[str, Any] = self._load_config()
 
-        # 4. Context & Role Resolution
-        self.context_path = os.path.expanduser(
-            self.get("llm.system_context", "~/.config/assistant/context.md")
-        )
-        self.user_context = self._load_or_create_context()
+        # 4. Role Resolution
         self.active_role = "default"
         self.active_role_prompt = self.get_role_prompt("default")
 
@@ -185,25 +181,6 @@ class PropertiesManager:
         except (OSError, json.JSONDecodeError) as e:
             logger.error(f"[PropertiesManager] Failed to load {self.config_file}: {e}")
             return {}
-
-    def _load_or_create_context(self) -> str:
-        if os.path.exists(self.context_path):
-            try:
-                with open(self.context_path, "r", encoding="utf-8") as f:
-                    return f.read().strip()
-            except OSError as e:
-                logger.warning(f"Could not read context at {self.context_path}: {e}")
-                return ""
-        else:
-            try:
-                os.makedirs(os.path.dirname(self.context_path), exist_ok=True)
-                with open(self.context_path, "w", encoding="utf-8") as f:
-                    f.write(
-                        "<!-- Write your custom context here. Assistant will read this to personalize its answers. -->\n"
-                    )
-            except OSError as e:
-                logger.warning(f"Could not create default context file at {self.context_path}: {e}")
-            return ""
 
     # -------------------------------------------------------------------------
     # Generic Property Accessors (Dot notation support)

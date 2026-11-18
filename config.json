@@ -1,7 +1,6 @@
 {
   "llm": {
     "default": "hermes",
-    "system_context": "~/.config/assistant/context.md",
     "models": {
       "hermes": {
         "provider_name": "local",

@@ -37,7 +37,7 @@ nix run github:egara/assistant
 ```
 
 #### Home Manager Integration
-Add the Home Manager module to your configuration to declare your settings, context, and selected voice models:
+Add the Home Manager module to your configuration to declare your settings, default role, and selected voice models:
 
 Add the flake input:
 ```nix
@@ -45,7 +45,7 @@ assistant.url = "github:egara/assistant";
 ```
 
 ##### Option A: Fully Managed via Nix (Default)
-In this mode, Home Manager writes and maintains both `~/.config/assistant/config.json` and `~/.config/assistant/context.md` declaratively:
+In this mode, Home Manager writes and maintains both `~/.config/assistant/config.json` and `~/.config/assistant/roles/default.md` declaratively:
 
 ```nix
 { inputs, pkgs, ... }: {
@@ -54,7 +54,7 @@ In this mode, Home Manager writes and maintains both `~/.config/assistant/config
   programs.assistant = {
     enable = true;
 
-    context = ''
+    defaultRole = ''
       You are Assistant, an agentic AI running locally on NixOS with Hyprland.
       Respond concisely and execute system commands or window actions when asked.
       Always reply in the user's language.
@@ -74,8 +74,8 @@ In this mode, Home Manager writes and maintains both `~/.config/assistant/config
 }
 ```
 
-##### Option B: Managing Config and Context Locally (Independent of Nix)
-If you already maintain your own `config.json` or `context.md` files locally (e.g. via dotfiles repo, secrets manager, or manual edits) and don't want Home Manager to overwrite or hardcode them, you can disable their generation:
+##### Option B: Managing Config and Roles Locally (Independent of Nix)
+If you already maintain your own `config.json` or roles files locally (e.g. via dotfiles repo, secrets manager, or manual edits) and don't want Home Manager to overwrite or hardcode them, you can disable their generation:
 
 ```nix
 { inputs, pkgs, ... }: {
@@ -84,20 +84,20 @@ If you already maintain your own `config.json` or `context.md` files locally (e.
   programs.assistant = {
     enable = true;
 
-    # Disable Home Manager generation of config.json and context.md
+    # Disable Home Manager generation of config.json and roles/default.md
     enableConfig = false;
-    enableContext = false;
+    enableDefaultRole = false;
   };
 }
 ```
 
 When disabled, Assistant will look for your existing local files at:
 * `~/.config/assistant/config.json`
-* `~/.config/assistant/context.md`
+* `~/.config/assistant/roles/default.md`
 
 ##### Starter Templates for Local Files
 
-If you choose to manage your files outside of Nix (`enableConfig = false`, `enableContext = false`), you can use the following templates as a starting point:
+If you choose to manage your files outside of Nix (`enableConfig = false`, `enableDefaultRole = false`), you can use the following templates as a starting point:
 
 ###### 1. Template `~/.config/assistant/config.json`
 Create directory `mkdir -p ~/.config/assistant` and save the following structure:
@@ -106,7 +106,6 @@ Create directory `mkdir -p ~/.config/assistant` and save the following structure
 {
   "llm": {
     "default": "local-main",
-    "system_context": "~/.config/assistant/context.md",
     "models": {
       "local-main": {
         "provider_name": "local",
@@ -161,8 +160,8 @@ Create directory `mkdir -p ~/.config/assistant` and save the following structure
 }
 ```
 
-###### 2. Template `~/.config/assistant/context.md`
-Create `~/.config/assistant/context.md` with your assistant's personality and instructions:
+###### 2. Template `~/.config/assistant/roles/default.md`
+Create `~/.config/assistant/roles/default.md` with your assistant's personality and instructions:
 
 ```markdown
 You are Assistant, an agentic AI desktop companion running locally on Linux (NixOS / Hyprland).
@@ -181,9 +180,9 @@ You are Assistant, an agentic AI desktop companion running locally on Linux (Nix
 | `programs.assistant.enable` | `boolean` | `false` | Enables Assistant installation and configuration. |
 | `programs.assistant.package` | `package` | `self.packages.${pkgs.stdenv.hostPlatform.system}.default` | The Assistant package derivation to install. |
 | `programs.assistant.enableConfig` | `boolean` | `true` | When `true`, generates `~/.config/assistant/config.json` from `settings`. Set to `false` to use your local config. |
-| `programs.assistant.enableContext` | `boolean` | `true` | When `true`, generates `~/.config/assistant/context.md` from `context`. Set to `false` to use your local context. |
+| `programs.assistant.enableDefaultRole` | `boolean` | `true` | When `true`, generates `~/.config/assistant/roles/default.md` from `defaultRole`. Set to `false` to use your local role file. |
 | `programs.assistant.settings` | `attrs` | `{}` | Key-value settings serialized into `config.json` when `enableConfig = true`. |
-| `programs.assistant.context` | `lines` | `""` | Markdown instructions serialized into `context.md` when `enableContext = true`. |
+| `programs.assistant.defaultRole` | `lines` | `""` | Markdown instructions serialized into `roles/default.md` when `enableDefaultRole = true`. |
 
 
 
@@ -243,7 +242,6 @@ This block configures Assistant's multi-model intelligence engine. It supports m
 "llm": {
     "default": "gemma",
     "history_duration_minutes": 15,
-    "system_context": "~/.config/assistant/context.md",
     "models": {
         "gemma": {
             "provider_name": "local",
@@ -380,8 +378,7 @@ Use this profile for fast interactions where you speak to the assistant but read
     "api_key": "sk-none",
     "base_url": "http://127.0.0.1:52625/v1",
     "model": "gemma4-it:12b",
-    "vision_enabled": true,
-    "system_context": "~/.config/assistant/context.md"
+    "vision_enabled": true
   },
   "voice": {
     "tts_engine": "none"
@@ -399,8 +396,7 @@ Use this profile if you want total privacy with local speech synthesis.
     "api_key": "sk-none",
     "base_url": "http://127.0.0.1:52625/v1",
     "model": "gemma4-it:12b",
-    "vision_enabled": true,
-    "system_context": "~/.config/assistant/context.md"
+    "vision_enabled": true
   },
   "decision_router": {
     "enabled": true,
@@ -543,7 +539,7 @@ Requests are resolved through a multi-round agentic loop instead of a fixed two-
 
 ### Modular Architecture (`src/properties/`, `src/tools/`, `src/routing/`, `src/commands/`, `src/mcp/`, `src/llm/` & `src/voice/`)
 The codebase follows a modular design separating configuration and properties, execution tools, intent routing, UI slash commands, model catalogs, voice engines, and external protocol managers:
-* **`src/properties/manager.py`**: Singleton Properties & Configuration Manager (`PropertiesManager`) centralizing path resolution (config, data, sounds, state, knowledge, QML), loading and managing `config.json`, user context (`context.md`), dynamic runtime properties (`active_model_key`, `tts_enabled`, `is_voice_mode`), and property change listeners.
+* **`src/properties/manager.py`**: Singleton Properties & Configuration Manager (`PropertiesManager`) centralizing path resolution (config, data, sounds, state, knowledge, roles, QML), loading and managing `config.json`, roles management (system & user roles), dynamic runtime properties (`active_model_key`, `tts_enabled`, `is_voice_mode`), and property change listeners.
 * **`src/voice/tts.py`**: Audio and speech synthesis worker (`TTSWorkerThread`, `stop_all_media_playback`) managing Edge-TTS / Piper ONNX local execution, language detection, and PipeWire playback.
 * **`src/llm/generator.py`**: Multi-round agentic loop worker (`AIGeneratorThread`, `extract_reasoning`), streaming tokens, DeepSeek/GLM reasoning capture, command approval safety checks, and loop prevention.
 * **`src/llm/catalog.py`**: Multi-model intelligence manager (`ModelCatalog`) managing presets, OpenAI client instantiation, runtime model catalog, endpoint discovery (`/models`), and QML selector grouping.

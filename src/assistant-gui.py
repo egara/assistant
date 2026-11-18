@@ -317,8 +317,6 @@ class Backend(QObject):
         if role_prompt and not role_prompt.startswith("<!--"):
             system_content += f"\n\n### ACTIVE ROLE ({props.active_role.upper()}):\n{role_prompt}"
 
-        if props.user_context and not props.user_context.startswith("<!--"):
-            system_content += f"\n\n### USER CONTEXT:\n{props.user_context}"
         return system_content
 
     def load_history(self):
