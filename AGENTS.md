@@ -116,14 +116,68 @@ assistant/
 Before committing and pushing changes:
 1. **Python Compilation**:
    ```bash
-   python3 -m py_compile src/assistant-gui.py src/tools/*.py src/routing/*.py src/commands/*.py
+   python3 -m py_compile src/assistant-gui.py src/properties/*.py src/tools/*.py src/routing/*.py src/commands/*.py src/llm/*.py src/voice/*.py src/mcp/*.py
    ```
 2. **Environment & Import Verification (Nix)**:
    ```bash
-   nix develop --command python3 -c "import tools, routing, commands; print('Imports valid!')"
+   nix develop --command python3 -c "import properties, tools, routing, commands, llm, voice, mcp; print('Imports valid!')"
    ```
 3. **Git Sanity Check**:
    ```bash
    git status
    git diff
    ```
+
+---
+
+## 🚀 Release Workflow & Protocol
+
+Whenever the user requests a new release (e.g. `vX.Y.Z`), agents must strictly follow these sequential steps:
+
+1. **Tag Version in Source Code**:
+   Update the version string across all manifest and core files:
+   - `flake.nix`: `version = "X.Y.Z";`
+   - `src/properties/manager.py`: `self.version = "X.Y.Z"`
+   - `src/ui.qml`: `text: "About (vX.Y.Z)"`
+   - Commit changes to `devel`:
+     ```bash
+     git add flake.nix src/properties/manager.py src/ui.qml
+     git commit -m "chore(release): bump version to X.Y.Z"
+     git push origin devel
+     ```
+
+2. **Merge `devel` into `main`**:
+   Ensure branch history and clean merges:
+   ```bash
+   git checkout main
+   git pull origin main
+   git merge --no-ff devel -m "chore(release): merge devel into main for vX.Y.Z"
+   ```
+
+3. **Create and Push Annotated Git Tag**:
+   ```bash
+   git tag -a vX.Y.Z -m "Release vX.Y.Z: <Summary of release highlights>"
+   git push origin main
+   git push origin vX.Y.Z
+   ```
+
+4. **Return to `devel` Branch**:
+   ```bash
+   git checkout devel
+   ```
+
+5. **Generate Local Release Notes File**:
+   Create a temporary release notes markdown document named `<version>.md` (e.g., `v1.1.0.md` or `1.1.0.md` as requested) directly in the repository root.
+   - **Language & Tone**: Strictly written in English, professional, clear, and without emojis.
+   - **Required Structure**:
+     ```markdown
+     # Assistant vX.Y.Z Release Notes
+
+     ## New Features
+     - Detailed list of features introduced.
+
+     ## Bug Fixes and Performance Improvements
+     - Detailed list of bug fixes, refactorings, and optimizations.
+     ```
+   - **CRITICAL**: Do **NOT** stage, commit, or push this release notes file to Git. It is a local scratch file intended only for the user to copy/paste into GitHub Releases and delete manually.
+
