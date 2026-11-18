@@ -39,10 +39,14 @@ nix run github:egara/assistant
 #### Home Manager Integration
 Add the Home Manager module to your configuration to declare your settings, context, and selected voice models:
 
-Add the flake to your configuration:
+Add the flake input:
 ```nix
 assistant.url = "github:egara/assistant";
 ```
+
+##### Option A: Fully Managed via Nix (Default)
+In this mode, Home Manager writes and maintains both `~/.config/assistant/config.json` and `~/.config/assistant/context.md` declaratively:
+
 ```nix
 { inputs, pkgs, ... }: {
   imports = [ inputs.assistant.homeManagerModules.default ];
@@ -50,14 +54,12 @@ assistant.url = "github:egara/assistant";
   programs.assistant = {
     enable = true;
 
-    # Optional switches to control file generation (default: true)
-    # Set to false if you already manage config.json or context.md locally:
-    # enableConfig = false;
-    # enableContext = false;
-
     context = ''
-    Information about you or your machine
+      You are Assistant, an agentic AI running locally on NixOS with Hyprland.
+      Respond concisely and execute system commands or window actions when asked.
+      Always reply in the user's language.
     '';
+
     settings = {
       llm = {
         model = "gemma4-it:12b";
@@ -72,16 +74,117 @@ assistant.url = "github:egara/assistant";
 }
 ```
 
+##### Option B: Managing Config and Context Locally (Independent of Nix)
+If you already maintain your own `config.json` or `context.md` files locally (e.g. via dotfiles repo, secrets manager, or manual edits) and don't want Home Manager to overwrite or hardcode them, you can disable their generation:
+
+```nix
+{ inputs, pkgs, ... }: {
+  imports = [ inputs.assistant.homeManagerModules.default ];
+
+  programs.assistant = {
+    enable = true;
+
+    # Disable Home Manager generation of config.json and context.md
+    enableConfig = false;
+    enableContext = false;
+  };
+}
+```
+
+When disabled, Assistant will look for your existing local files at:
+* `~/.config/assistant/config.json`
+* `~/.config/assistant/context.md`
+
+##### Starter Templates for Local Files
+
+If you choose to manage your files outside of Nix (`enableConfig = false`, `enableContext = false`), you can use the following templates as a starting point:
+
+###### 1. Template `~/.config/assistant/config.json`
+Create directory `mkdir -p ~/.config/assistant` and save the following structure:
+
+```json
+{
+  "llm": {
+    "default": "local-main",
+    "system_context": "~/.config/assistant/context.md",
+    "models": {
+      "local-main": {
+        "provider_name": "local",
+        "api_key": "sk-none",
+        "base_url": "http://127.0.0.1:52625/v1",
+        "model": "gemma4-it:12b",
+        "vision_enabled": true,
+        "timeout": 120.0
+      },
+      "fast-edge": {
+        "provider_name": "local",
+        "api_key": "sk-none",
+        "base_url": "http://127.0.0.1:8000/v1",
+        "model": "Hermes-3-8B",
+        "vision_enabled": false,
+        "timeout": 60.0
+      }
+    }
+  },
+  "decision_router": {
+    "enabled": false,
+    "endpoint": "http://127.0.0.1:8000/v1/systemone",
+    "model": "d3:edge",
+    "timeout": 1.5,
+    "confidence_threshold": 0.60
+  },
+  "voice": {
+    "tts_engine": "none",
+    "whisper_model": "~/.local/share/assistant/models/ggml-small.bin",
+    "tts_local_models": {
+      "en": "~/.local/share/assistant/models/en_US-lessac-medium.onnx",
+      "es": "~/.local/share/assistant/models/es_ES-sharvard-medium.onnx"
+    },
+    "tts_online_voices": {
+      "en": "en-US-GuyNeural",
+      "es": "es-ES-AlvaroNeural"
+    }
+  },
+  "mcp_servers": {
+    "searxng": {
+      "url": "http://127.0.0.1:32771/mcp",
+      "transport": "streamable_http",
+      "type": "web_search",
+      "priority": 10,
+      "description": "Internet search via local SearXNG instance."
+    }
+  },
+  "obsidian": {
+    "api_key": "YOUR_OBSIDIAN_REST_API_KEY",
+    "url": "https://127.0.0.1:27124"
+  }
+}
+```
+
+###### 2. Template `~/.config/assistant/context.md`
+Create `~/.config/assistant/context.md` with your assistant's personality and instructions:
+
+```markdown
+You are Assistant, an agentic AI desktop companion running locally on Linux (NixOS / Hyprland).
+
+## Guidelines:
+- Respond concisely and execute system commands or window actions when asked.
+- Do not hallucinate. If you do not know something, search the web or consult system knowledge tools.
+- Always reply in the user's preferred language.
+- Silent actions: simple movements and adjustments are applied directly without chatting.
+```
+
 #### Module Options Reference
 
 | Option | Type | Default | Description |
 |---|---|---|---|
 | `programs.assistant.enable` | `boolean` | `false` | Enables Assistant installation and configuration. |
 | `programs.assistant.package` | `package` | `self.packages.${pkgs.stdenv.hostPlatform.system}.default` | The Assistant package derivation to install. |
-| `programs.assistant.enableConfig` | `boolean` | `true` | When true, generates `~/.config/assistant/config.json` from `settings`. Disable to manage config locally. |
-| `programs.assistant.enableContext` | `boolean` | `true` | When true, generates `~/.config/assistant/context.md` from `context`. Disable to manage context locally. |
-| `programs.assistant.settings` | `attrs` | `{}` | Key-value settings to serialize into `config.json`. |
-| `programs.assistant.context` | `lines` | `""` | Markdown text instructions to serialize into `context.md`. |
+| `programs.assistant.enableConfig` | `boolean` | `true` | When `true`, generates `~/.config/assistant/config.json` from `settings`. Set to `false` to use your local config. |
+| `programs.assistant.enableContext` | `boolean` | `true` | When `true`, generates `~/.config/assistant/context.md` from `context`. Set to `false` to use your local context. |
+| `programs.assistant.settings` | `attrs` | `{}` | Key-value settings serialized into `config.json` when `enableConfig = true`. |
+| `programs.assistant.context` | `lines` | `""` | Markdown instructions serialized into `context.md` when `enableContext = true`. |
+
 
 
 ---
