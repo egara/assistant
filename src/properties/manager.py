@@ -109,7 +109,6 @@ class PropertiesManager:
 
     def _resolve_qml_file(self) -> Optional[str]:
         candidates = [
-            os.path.join(self.config_dir, "ui.qml"),
             os.path.join(self.base_dir, "ui.qml"),
             os.path.abspath(os.path.join(self.base_dir, "..", "share", "assistant", "ui.qml")),
             os.path.expanduser("~/.local/share/assistant/ui.qml"),

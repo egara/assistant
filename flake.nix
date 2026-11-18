@@ -91,6 +91,7 @@
                 fi
 
                 cp src/ui.qml $out/share/assistant/ui.qml
+                cp src/ui.qml $out/lib/assistant/ui.qml
                 if [ -f "src/hyprland_knowledge.json" ]; then
                   cp src/hyprland_knowledge.json $out/share/assistant/hyprland_knowledge.json
                 fi
