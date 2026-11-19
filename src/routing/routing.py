@@ -20,6 +20,7 @@ DEFAULT_CATEGORIES: Dict[str, List[str]] = {
     "filesystem": ["read_file", "write_file", "replace_in_file", "execute_command"],
     "notes": ["obsidian_search", "obsidian_read", "obsidian_write"],
     "weather": ["get_weather"],
+    "cinema": ["get_cinema_showtimes"],
     "web_search": ["web_search"],
 }
 
@@ -37,7 +38,8 @@ DEFAULT_CRITERIA: Dict[str, str] = {
     "filesystem": "Operaciones con archivos y terminal: buscar archivos en el disco (/home, extensiones .ods, .pdf), listar carpetas (lista canciones en descargas/Downloads), leer o escribir archivos, o ejecutar comandos bash.",
     "notes": "Buscar o leer notas en la aplicación Obsidian.",
     "weather": "Previsión del tiempo, lluvia, viento, nieve, temperatura o clima meteorológico en ciudades o regiones (e.g. qué tiempo hará en León, lloverá mañana, si puedo ir en bici, moto o pasear según el clima, qué ropa ponerme). No elegir para eventos, cine, compras o lugares de ocio.",
-    "web_search": "Buscar información actualizada en internet: reportes, noticias del día de hoy, sucesos recientes, última hora, carteleras de cine, horarios de películas o eventos, cartelera Odeón, tiendas, restaurantes o páginas web.",
+    "cinema": "Cartelera de cine, películas en emisión, horarios de sesiones de cine o cines (e.g. qué echan en el cine hoy, horarios de Odeon León, cartelera Van Gogh, a qué hora es la película).",
+    "web_search": "Buscar información actualizada en internet: reportes, noticias del día de hoy, sucesos recientes, última hora, tiendas, restaurantes o páginas web.",
 }
 
 
