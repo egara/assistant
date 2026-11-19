@@ -203,7 +203,9 @@ ApplicationWindow {
                     y: 3
 
                     anchors.right: role === "user" ? parent.right : undefined
+                    anchors.rightMargin: role === "user" ? 6 : 0
                     anchors.left: (role === "ai" || role === "approval") ? parent.left : undefined
+                    anchors.leftMargin: (role === "ai" || role === "approval") ? 6 : 0
                     anchors.horizontalCenter: role === "sys" ? parent.horizontalCenter : undefined
 
                     width: contentCol.width + 30
