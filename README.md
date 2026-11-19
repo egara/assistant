@@ -439,7 +439,7 @@ Tool categories routed by the decision engine:
 * `filesystem`: File manipulation (`read_file`, `write_file`, `replace_in_file`, `execute_command`).
 * `notes`: Local Obsidian vault actions (`obsidian_search`, `obsidian_read`, `obsidian_write`).
 * `weather`: Open-Meteo weather lookups (`get_weather`).
-* `cinema`: Cinema showtimes and movie listings from eCartelera (`get_cinema_showtimes`).
+* `cinema`: Cinema showtimes and movie listings from Tu Cine (`get_cinema_showtimes`).
 * `web_search`: Internet search via SearXNG MCP or DuckDuckGo (`web_search`).
 
 ---
@@ -564,7 +564,7 @@ The codebase follows a modular design separating configuration and properties, e
 * **`src/routing/routing.py`**: Encapsulates `DecisionRouter` for FastFlowLM / d3:edge System One categorization, dynamic category-to-tools resolution, latency measurement, and fallback handling.
 * **`src/tools/time.py`**: Local time/date resolution with IANA timezone support (`get_current_time`).
 * **`src/tools/weather.py`**: Weather forecast resolution with Open-Meteo & wttr.in fallback (`get_weather`).
-* **`src/tools/cinema.py`**: Free and native cinema showtimes and movie schedule extractor based on eCartelera (`get_cinema_showtimes`).
+* **`src/tools/cinema.py`**: Free and native cinema showtimes and movie schedule extractor based on Tu Cine / `tucine.app` (`get_cinema_showtimes`).
 * **`src/tools/obsidian.py`**: Obsidian Local REST API connector (`search_obsidian`, `read_obsidian`, `write_obsidian`).
 * **`src/tools/web.py`**: Web search with SearXNG MCP priority and DuckDuckGo fallback (`perform_web_search`).
 * **`src/tools/os.py`**: OS, desktop app discovery (`uwsm app` / `kitty`), and filesystem operations (`read_file`, `write_file`, `replace_in_file`, `open_application`, `execute_command`).
@@ -575,7 +575,7 @@ The codebase follows a modular design separating configuration and properties, e
 1. `get_current_time(timezone)`: Retrieves real-time date, time, weekday, and timezone natively from the host system (with optional IANA timezone conversion, replacing external time MCP servers). Anchors time-sensitive queries, relative dates ('hoy', 'ayer'), and web searches.
 2. `open_application(app, target)`: Universally detects installed desktop applications (`.desktop` entries via XDG) and CLI tools (`yazi`, `btop`, etc.). Automatically wraps GUI tools with `uwsm app` for Wayland session consistency and spawns terminal apps inside `kitty`. Silent execution prevents repetitive audio or unnecessary chat turns.
 3. `get_weather(location)`: Fetches precise meteorological data and multi-day forecasts via Open-Meteo's geocoding API with localized WMO status codes.
-4. `get_cinema_showtimes(cinema, date, movie)`: Extracts live cinema schedules, movie listings, ratings, and showtimes directly from eCartelera without requiring any API key or subscription. Automatically resolves cinema aliases (e.g. *Odeón León*, *Cines Van Gogh*) and queries showtimes by relative days (*hoy*, *mañana*, *sábado*, etc.).
+4. `get_cinema_showtimes(cinema, date, movie)`: Extracts live cinema schedules, movie listings, formats (ATMOS, VOSE, Digital), and showtimes directly from `tucine.app` without requiring any API key or subscription. Automatically resolves cinema aliases (e.g. *Odeón León*, *Cines Van Gogh*) and queries showtimes across the entire week by relative days (*hoy*, *mañana*, *sábado*, etc.).
 5. `manage_desktop(action, target, window_address)`: Hyprland workspace and window manager controller:
    * **Versioned Knowledge Base**: Dynamically detects the installed Hyprland version and chooses the exact dispatcher syntax (e.g., Lua dispatchers for v0.57+).
    * **KB-Driven Tool Schema**: The `manage_desktop` action enum and descriptions are generated from `hyprland_knowledge.json`, so new or user-learned actions become available to the model without code changes. `_command_intents` in the same file classifies shell commands as state-changing (silent) vs read-only (agentic loop continues).
