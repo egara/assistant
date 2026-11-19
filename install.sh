@@ -11,7 +11,7 @@ USER_AGENT="Mozilla/5.0 (Windows NT 10.0; Win64; x64)"
 REPO_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 
 echo -e "${BLUE}==========================================${NC}"
-echo -e "${BLUE}    🤖 Installing Mofakir AI Assistant    ${NC}"
+echo -e "${BLUE}       🤖 Installing Assistant AI         ${NC}"
 echo -e "${BLUE}==========================================${NC}"
 
 if [ "$EUID" -eq 0 ]; then
@@ -19,29 +19,33 @@ if [ "$EUID" -eq 0 ]; then
   exit 1
 fi
 
-SHARE_DIR="$HOME/.local/share/mofakir"
+SHARE_DIR="$HOME/.local/share/assistant"
 BIN_DIR="$SHARE_DIR/bin"
 MODELS_DIR="$SHARE_DIR/models"
 SOUNDS_DIR="$SHARE_DIR/sounds"
+LIB_DIR="$SHARE_DIR/lib"
 VENV_DIR="$SHARE_DIR/venv"
 LOCAL_BIN="$HOME/.local/bin"
+CONFIG_DIR="$HOME/.config/assistant"
 
-mkdir -p "$BIN_DIR" "$MODELS_DIR" "$SOUNDS_DIR" "$LOCAL_BIN"
+mkdir -p "$BIN_DIR" "$MODELS_DIR" "$SOUNDS_DIR" "$LIB_DIR" "$LOCAL_BIN" "$CONFIG_DIR"
 
 echo -e "\n${YELLOW}[1/6] Detecting OS and installing system dependencies...${NC}"
 if [ -f /etc/os-release ]; then . /etc/os-release; OS=$ID; OS_LIKE=$ID_LIKE; else exit 1; fi
 
 if [[ "$OS" == "arch" || "$OS_LIKE" == *"arch"* ]]; then
-    sudo pacman -Syu --needed --noconfirm sox jq wl-clipboard grim playerctl python python-virtualenv wget curl base-devel git xclip maim xdotool wmctrl cmake xcb-util-cursor
+    sudo pacman -Syu --needed --noconfirm sox jq pipewire pipewire-pulse wl-clipboard grim playerctl python python-virtualenv wget curl base-devel git xclip maim xdotool wmctrl cmake xcb-util-cursor
 elif [[ "$OS" == "ubuntu" || "$OS" == "debian" || "$OS_LIKE" == *"debian"* || "$OS_LIKE" == *"ubuntu"* ]]; then
     sudo apt-get update
-    sudo apt-get install -y sox libsox-fmt-all jq wl-clipboard grim playerctl python3-venv wget curl build-essential git xclip maim xdotool wmctrl cmake libxcb-cursor0
+    sudo apt-get install -y sox libsox-fmt-all jq pipewire-bin wl-clipboard grim playerctl python3-venv wget curl build-essential git xclip maim xdotool wmctrl cmake libxcb-cursor0
+elif [[ "$OS" == "fedora" || "$OS_LIKE" == *"fedora"* ]]; then
+    sudo dnf install -y sox jq pipewire-utils wl-clipboard grim playerctl python3-virtualenv wget curl make automake gcc gcc-c++ git xclip maim xdotool wmctrl cmake xcb-util-cursor
 fi
 
-echo -e "\n${YELLOW}[2/6] Setting up isolated Python environment...${NC}"
+echo -e "\n${YELLOW}[2/6] Setting up isolated Python environment and dependencies...${NC}"
 if [ ! -d "$VENV_DIR" ]; then python3 -m venv "$VENV_DIR"; fi
 "$VENV_DIR/bin/pip" install --upgrade pip
-"$VENV_DIR/bin/pip" install openai ddgs requests beautifulsoup4 edge-tts langdetect PyQt6
+"$VENV_DIR/bin/pip" install openai ddgs requests beautifulsoup4 edge-tts langdetect PyQt6 mcp
 
 echo -e "\n${YELLOW}[3/6] Setting up AI Audio Binaries...${NC}"
 if [ ! -f "$BIN_DIR/whisper-cli" ] || (command -v ldd >/dev/null && ldd "$BIN_DIR/whisper-cli" 2>&1 | grep -q "not found"); then
@@ -151,16 +155,16 @@ dl_piper() {
 }
 
 echo -e "\n${BLUE}Select TTS languages to install for offline voice synthesis:${NC}"
-echo "  en - English (Default)    de - German         ru - Russian"
+echo "  en - English              de - German         ru - Russian"
 echo "  ar - Arabic               it - Italian        zh - Chinese"
-echo "  fr - French               ja - Japanese       es - Spanish"
+echo "  fr - French               ja - Japanese       es - Spanish (Default)"
 echo "  pt - Portuguese           all - Install all"
 
 # Use tty redirection to read input safely in headless or pipeline environments
-read -p "Enter languages separated by space (default: en): " selected_langs </dev/tty || selected_langs="en"
+read -p "Enter languages separated by space (default: es en): " selected_langs </dev/tty || selected_langs="es en"
 
-if [ -z "$selected_langs" ]; then selected_langs="en"; fi
-if [[ "$selected_langs" == *"all"* ]]; then selected_langs="en ar fr es de it ja pt ru zh"; fi
+if [ -z "$selected_langs" ]; then selected_langs="es en"; fi
+if [[ "$selected_langs" == *"all"* ]]; then selected_langs="es en ar fr de it ja pt ru zh"; fi
 
 for lang in $selected_langs; do
     case $lang in
@@ -181,9 +185,9 @@ done
 # Force return to repository directory before starting the copy actions
 cd "$REPO_DIR"
 
-echo -e "\n${YELLOW}[5/6] Finalizing assets and scripts...${NC}"
+echo -e "\n${YELLOW}[5/6] Finalizing modules, assets, knowledge and configurations...${NC}"
 
-# Ensure default assets exist and are copied over safely
+# 1. UI Sounds
 if [ -d "$REPO_DIR/sounds" ] && [ "$(ls -A "$REPO_DIR/sounds" 2>/dev/null)" ]; then 
     cp "$REPO_DIR/sounds"/* "$SOUNDS_DIR/"
 else
@@ -192,28 +196,86 @@ else
     sox -n "$SOUNDS_DIR/stop.wav" synth 0.15 sine 400 vol 0.5 || true
 fi
 
-mkdir -p "$HOME/.config/mofakir"
-if [ ! -f "$HOME/.config/mofakir/config.json" ] && [ -f "$REPO_DIR/config.json" ]; then 
-    cp "$REPO_DIR/config.json" "$HOME/.config/mofakir/config.json"
+# 2. Configuration file (~/.config/assistant/config.json)
+if [ ! -f "$CONFIG_DIR/config.json" ] && [ -f "$REPO_DIR/config.json" ]; then 
+    cp "$REPO_DIR/config.json" "$CONFIG_DIR/config.json"
 fi
 
-# Critical copies (any failure here will exit with error)
-cp "$REPO_DIR/trigger.sh" "$SHARE_DIR/mofakir.sh"
-cp "$REPO_DIR/src/mofakir-gui.py" "$SHARE_DIR/mofakir-gui.py"
+# 3. Base Hyprland recipe knowledge
+if [ -f "$REPO_DIR/src/hyprland_knowledge.json" ]; then
+    cp "$REPO_DIR/src/hyprland_knowledge.json" "$SHARE_DIR/hyprland_knowledge.json"
+    if [ ! -f "$SHARE_DIR/hyprland_knowledge.json" ]; then
+        cp "$REPO_DIR/src/hyprland_knowledge.json" "$SHARE_DIR/hyprland_knowledge.json"
+    fi
+fi
+
+# 4. Modular markdown knowledge base
+if [ -d "$REPO_DIR/src/knowledge" ]; then
+    mkdir -p "$SHARE_DIR/knowledge" "$CONFIG_DIR/knowledge"
+    cp -r "$REPO_DIR/src/knowledge"/* "$SHARE_DIR/knowledge/"
+    for f in "$REPO_DIR/src/knowledge"/*; do
+        bname=$(basename "$f")
+        if [ ! -f "$CONFIG_DIR/knowledge/$bname" ]; then
+            cp "$f" "$CONFIG_DIR/knowledge/$bname"
+        fi
+    done
+fi
+
+# 5. Roles system
+if [ -d "$REPO_DIR/src/roles" ]; then
+    mkdir -p "$SHARE_DIR/roles" "$CONFIG_DIR/roles"
+    cp -r "$REPO_DIR/src/roles"/* "$SHARE_DIR/roles/"
+fi
+
+# 6. Install full Python package modules into $SHARE_DIR/lib
+cp -r "$REPO_DIR/src/properties" "$LIB_DIR/"
+cp -r "$REPO_DIR/src/tools" "$LIB_DIR/"
+cp -r "$REPO_DIR/src/routing" "$LIB_DIR/"
+cp -r "$REPO_DIR/src/commands" "$LIB_DIR/"
+cp -r "$REPO_DIR/src/mcp_client" "$LIB_DIR/"
+cp -r "$REPO_DIR/src/llm" "$LIB_DIR/"
+cp -r "$REPO_DIR/src/voice" "$LIB_DIR/"
+if [ -d "$REPO_DIR/src/roles" ]; then cp -r "$REPO_DIR/src/roles" "$LIB_DIR/"; fi
+if [ -d "$REPO_DIR/src/knowledge" ]; then cp -r "$REPO_DIR/src/knowledge" "$LIB_DIR/"; fi
+if [ -f "$REPO_DIR/src/hyprland_knowledge.json" ]; then cp "$REPO_DIR/src/hyprland_knowledge.json" "$LIB_DIR/"; fi
+
+# Core scripts and UI
+cp "$REPO_DIR/trigger.sh" "$SHARE_DIR/assistant.sh"
+cp "$REPO_DIR/src/assistant-gui.py" "$SHARE_DIR/assistant-gui.py"
 cp "$REPO_DIR/src/ui.qml" "$SHARE_DIR/ui.qml"
-chmod +x "$SHARE_DIR/mofakir.sh" "$SHARE_DIR/mofakir-gui.py"
+chmod +x "$SHARE_DIR/assistant.sh" "$SHARE_DIR/assistant-gui.py"
 
 echo -e "\n${YELLOW}[6/6] Creating executable wrappers in ~/.local/bin...${NC}"
-cat << EOF > "$LOCAL_BIN/mofakir"
+
+cat << 'EOF' > "$LOCAL_BIN/assistant-gui"
 #!/usr/bin/env bash
-export PATH="$BIN_DIR:$VENV_DIR/bin:\$PATH"
-exec "$SHARE_DIR/mofakir.sh" "\$@"
+SHARE_DIR="$HOME/.local/share/assistant"
+BIN_DIR="$SHARE_DIR/bin"
+VENV_DIR="$SHARE_DIR/venv"
+LIB_DIR="$SHARE_DIR/lib"
+
+export PATH="$BIN_DIR:$VENV_DIR/bin:$PATH"
+export PYTHONPATH="$LIB_DIR:$PYTHONPATH"
+
+exec "$VENV_DIR/bin/python3" "$SHARE_DIR/assistant-gui.py" "$@"
 EOF
-cat << EOF > "$LOCAL_BIN/mofakir-gui"
+
+cat << 'EOF' > "$LOCAL_BIN/assistant"
 #!/usr/bin/env bash
-export PATH="$BIN_DIR:$VENV_DIR/bin:\$PATH"
-exec "$VENV_DIR/bin/python3" "$SHARE_DIR/mofakir-gui.py" "\$@"
+SHARE_DIR="$HOME/.local/share/assistant"
+BIN_DIR="$SHARE_DIR/bin"
+VENV_DIR="$SHARE_DIR/venv"
+LIB_DIR="$SHARE_DIR/lib"
+
+export PATH="$BIN_DIR:$VENV_DIR/bin:$PATH"
+export PYTHONPATH="$LIB_DIR:$PYTHONPATH"
+
+exec "$SHARE_DIR/assistant.sh" "$@"
 EOF
-chmod +x "$LOCAL_BIN/mofakir" "$LOCAL_BIN/mofakir-gui"
+
+chmod +x "$LOCAL_BIN/assistant" "$LOCAL_BIN/assistant-gui"
 
 echo -e "\n${GREEN}        🎉 INSTALLATION COMPLETE 🎉       ${NC}"
+echo -e "${BLUE}You can now run '${GREEN}assistant${BLUE}' or '${GREEN}assistant --voice${BLUE}' from anywhere!${NC}"
+echo -e "${YELLOW}Ensure ~/.local/bin is in your PATH (e.g. in ~/.bashrc or ~/.zshrc):${NC}"
+echo -e "  export PATH=\"\$HOME/.local/bin:\$PATH\"\n"
