@@ -83,6 +83,7 @@ class PropertiesManager:
         self.is_voice_mode = (launch_mode == "--voice")
         self.tts_enabled = False
         self.active_model_key = ""
+        self.mcp_status: Dict[str, Dict[str, Any]] = {}
 
         # Default model initialization from config if present
         default_model = self.get("llm.default_model") or self.get("llm.model", "")
@@ -299,6 +300,13 @@ class PropertiesManager:
     def set_voice_mode(self, enabled: bool) -> None:
         self.is_voice_mode = enabled
         self._notify_listeners("is_voice_mode", enabled)
+
+    def set_mcp_status(self, status: Dict[str, Dict[str, Any]]) -> None:
+        self.mcp_status = status
+        self._notify_listeners("mcp_status", status)
+
+    def get_mcp_status(self) -> Dict[str, Dict[str, Any]]:
+        return self.mcp_status
 
     # -------------------------------------------------------------------------
     # Roles Management
