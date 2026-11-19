@@ -20,8 +20,9 @@ This document serves as the persistent contextual memory for AI agents (and huma
    - **No Hardcoded User Paths**: Never hardcode user paths or usernames (e.g. `egarcia`). Use `os.environ.get("USER") or getpass.getuser()` and `os.path.expanduser("~")`.
    - **Clean Imports & Decoupling**: Do not leave unused or orphaned imports in core modules. Keep domain logic decoupled into dedicated packages.
 
-4. **Nix Packaging & File Synchronization (`flake.nix`)**:
+4. **Nix Packaging & Script Synchronization (`flake.nix` & `install.sh`)**:
    - Whenever a new Python package directory is created under `src/` (such as `src/tools/`, `src/routing/`, or `src/commands/`), ensure it is installed in `flake.nix` under `$out/lib/assistant/` so that Nix builds and wrapped binaries retain full module access via `PYTHONPATH`.
+   - **Keep `install.sh` Up to Date**: In tandem with `flake.nix`, whenever new Python packages, system dependencies, CLI tools, external pip packages, assets, or configuration structures are added or modified, update [`install.sh`](file:///home/egarcia/Development/git/assistant/install.sh) to ensure non-Nix environments (Arch, Debian/Ubuntu, Fedora) can build, install, and execute Assistant seamlessly. All paths in `install.sh` must follow the standard `~/.local/share/assistant` layout and set `PYTHONPATH` to include its internal `lib/` directory.
 
 5. **Knowledge & Roles Files & Runtime Paths**:
    - Base system recipe knowledge: [`src/hyprland_knowledge.json`](file:///home/egarcia/Development/git/assistant/src/hyprland_knowledge.json).
@@ -42,6 +43,7 @@ This document serves as the persistent contextual memory for AI agents (and huma
 ```text
 assistant/
 ├── flake.nix                  # Nix Flake build definition & Home Manager module
+├── install.sh                 # Generic Linux standalone installer (Arch, Debian/Ubuntu, Fedora)
 ├── trigger.sh                 # Launcher script with dynamic VAD/toggle modes
 ├── README.md                  # User-facing documentation & architecture overview
 ├── AGENTS.md                  # Persistent instructions and guidelines for AI agents
