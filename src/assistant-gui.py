@@ -227,6 +227,7 @@ class Backend(QObject):
             get_available_roles=lambda: props.get_available_roles(),
             get_active_role=lambda: props.active_role,
             set_active_role=self._set_active_role,
+            get_mcp_status=lambda: props.get_mcp_status(),
         )
 
         self.load_history()

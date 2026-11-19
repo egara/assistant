@@ -26,6 +26,7 @@ class CommandContext:
         get_available_roles: Optional[Callable[[], Dict[str, Any]]] = None,
         get_active_role: Optional[Callable[[], str]] = None,
         set_active_role: Optional[Callable[[str], bool]] = None,
+        get_mcp_status: Optional[Callable[[], Dict[str, Any]]] = None,
     ):
         self.emit_message = emit_message
         self.reset_session = reset_session
@@ -40,6 +41,7 @@ class CommandContext:
         self.get_available_roles = get_available_roles or (lambda: {})
         self.get_active_role = get_active_role or (lambda: "default")
         self.set_active_role = set_active_role or (lambda r: False)
+        self.get_mcp_status = get_mcp_status or (lambda: {})
 
 
 class BaseCommand(ABC):
