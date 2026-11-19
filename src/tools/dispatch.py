@@ -19,6 +19,7 @@ from tools.os import (
 from tools.time import get_current_time
 from tools.weather import get_weather
 from tools.web import perform_web_search
+from tools.cinema import get_cinema_showtimes
 
 
 def dispatch_tool(
@@ -45,6 +46,15 @@ def dispatch_tool(
         return results, results.startswith("Application launched in background:")
     if tool_name == "get_weather":
         return get_weather(args.get("location", "")), False
+    if tool_name == "get_cinema_showtimes":
+        return (
+            get_cinema_showtimes(
+                cinema=args.get("cinema", ""),
+                date=args.get("date", "hoy"),
+                movie=args.get("movie", ""),
+            ),
+            False,
+        )
     if tool_name == "web_search":
         return perform_web_search(args.get("query", ""), mcp_manager=mcp_manager), False
     if tool_name == "read_file":

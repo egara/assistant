@@ -54,6 +54,8 @@ from tools import (
     build_manage_desktop_tool,
     manage_desktop,
     configure_hyprland,
+    get_cinema_showtimes,
+    CINEMA_TOOLS,
 )
 from routing import DecisionRouter
 from commands import create_default_registry, CommandContext
@@ -122,6 +124,7 @@ exposed_mcp_tools = [
 tools = (
     TIME_TOOLS
     + WEATHER_TOOLS
+    + CINEMA_TOOLS
     + WEB_TOOLS
     + OBSIDIAN_TOOLS
     + OS_TOOLS
