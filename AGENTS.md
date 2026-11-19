@@ -67,7 +67,7 @@ assistant/
     ├── routing/               # Decision Router package (System One / FastFlowLM)
     │   ├── __init__.py        # Exports DecisionRouter and category mapping
     │   └── routing.py         # FastFlowLM /v1/systemone d3:edge intent classification
-    ├── mcp/                   # Model Context Protocol (MCP) package
+    ├── mcp_client/            # Model Context Protocol (MCP) package
     │   ├── __init__.py        # Exports MCPManager and MCP_AVAILABLE
     │   └── manager.py         # SSE/HTTP transport connections and tool discovery
     ├── llm/                   # Multi-Model LLM Catalog package
@@ -120,11 +120,11 @@ assistant/
 Before committing and pushing changes:
 1. **Python Compilation**:
    ```bash
-   python3 -m py_compile src/assistant-gui.py src/properties/*.py src/tools/*.py src/routing/*.py src/commands/*.py src/llm/*.py src/voice/*.py src/mcp/*.py
+   python3 -m py_compile src/assistant-gui.py src/properties/*.py src/tools/*.py src/routing/*.py src/commands/*.py src/llm/*.py src/voice/*.py src/mcp_client/*.py
    ```
 2. **Environment & Import Verification (Nix)**:
    ```bash
-   nix develop --command python3 -c "import properties, tools, routing, commands, llm, voice, mcp; print('Imports valid!')"
+   nix develop --command python3 -c "import properties, tools, routing, commands, llm, voice, mcp_client; print('Imports valid!')"
    ```
 3. **Git Sanity Check**:
    ```bash

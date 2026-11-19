@@ -57,7 +57,7 @@ from tools import (
 )
 from routing import DecisionRouter
 from commands import create_default_registry, CommandContext
-from mcp import MCPManager, MCP_AVAILABLE
+from mcp_client import MCPManager, MCP_AVAILABLE
 from llm import ModelCatalog, AIGeneratorThread
 from voice import TTSWorkerThread, stop_all_media_playback
 from properties import PropertiesManager

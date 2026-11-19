@@ -116,7 +116,7 @@
                 cp -r src/tools $out/lib/assistant/
                 cp -r src/routing $out/lib/assistant/
                 cp -r src/commands $out/lib/assistant/
-                cp -r src/mcp $out/lib/assistant/
+                cp -r src/mcp_client $out/lib/assistant/
                 cp -r src/llm $out/lib/assistant/
                 cp -r src/voice $out/lib/assistant/
                 cp src/assistant-gui.py $out/lib/assistant/assistant-gui.py
