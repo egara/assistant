@@ -352,6 +352,11 @@ class AIGeneratorThread(QThread):
                     )
                     if full_content.strip():
                         self.messages.append({"role": "assistant", "content": full_content})
+                    else:
+                        loop_msg = "He obtenido los datos necesarios pero se ha interrumpido la consulta. ¿Quieres que lo vuelva a intentar?"
+                        self.new_bubble_signal.emit("ai", "")
+                        self.append_text_signal.emit(loop_msg)
+                        self.messages.append({"role": "assistant", "content": loop_msg})
                     break
                 executed_signatures_history.add(current_round_sig)
 
