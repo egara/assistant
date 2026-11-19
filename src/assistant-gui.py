@@ -177,11 +177,9 @@ def process_prompt(user_query):
 
 
 ## QTHREADS
-# Maximum number of chained tool-execution rounds per user request. Strong
-# agentic models (e.g. GLM-5.3-Flash) often chain several searches before
-# answering; the final allowed round withholds the tools schema to force a
-# plain text answer instead of letting the model call tools indefinitely.
-MAX_TOOL_ROUNDS = 4
+# Tool-execution round limits are managed per model by the LLM generator
+# (src/llm/generator.py: DEFAULT_MAX_TOOL_ROUNDS). Override per model with the
+# "max_tool_rounds" key in each model spec of config.json.
 
 
 ## BACKEND CONTROLLER (Bridged to QML)

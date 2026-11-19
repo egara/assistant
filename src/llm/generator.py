@@ -20,7 +20,11 @@ from tools.os import execute_command
 
 logger = logging.getLogger("assistant.llm.generator")
 
-MAX_TOOL_ROUNDS: int = 4
+# Default maximum number of chained tool-execution rounds per user request.
+# Overridable per model via the "max_tool_rounds" key in each model spec
+# (config.json -> llm.models.<key>.max_tool_rounds), so lightweight models can
+# keep a tighter budget while strong agentic models get more headroom.
+DEFAULT_MAX_TOOL_ROUNDS: int = 6
 
 SAFE_COMMANDS: List[str] = [
     "uwsm",
@@ -136,6 +140,14 @@ class AIGeneratorThread(QThread):
             active_model = self.model_config.get("name")
             model_key = self.model_config.get("key", active_model)
 
+            try:
+                max_tool_rounds = int(
+                    self.model_config.get("max_tool_rounds", DEFAULT_MAX_TOOL_ROUNDS)
+                )
+            except (TypeError, ValueError):
+                max_tool_rounds = DEFAULT_MAX_TOOL_ROUNDS
+            max_tool_rounds = max(1, min(max_tool_rounds, 12))
+
             api_kwargs: Dict[str, Any] = {
                 "model": active_model,
                 "messages": temp_messages,
@@ -176,14 +188,14 @@ class AIGeneratorThread(QThread):
 
             executed_signatures_history: Set[Tuple[Tuple[str, str], ...]] = set()
 
-            for round_num in range(MAX_TOOL_ROUNDS + 1):
+            for round_num in range(max_tool_rounds + 1):
                 request_kwargs = {
                     "model": active_model,
                     "messages": temp_messages,
                     "temperature": 0.0,
                     "stream": True,
                 }
-                if api_kwargs.get("tools") and round_num < MAX_TOOL_ROUNDS:
+                if api_kwargs.get("tools") and round_num < max_tool_rounds:
                     request_kwargs["tools"] = api_kwargs["tools"]
                 elif api_kwargs.get("tools"):
                     logger.info(
@@ -306,6 +318,23 @@ class AIGeneratorThread(QThread):
                         logger.info(f"[LLM] Round {round_num + 1}: answer ({len(full_content)} chars)")
                     else:
                         logger.warning(f"[LLM] Round {round_num + 1}: model returned no content and no tool calls")
+                        # Visible fallback: never leave the user without any response.
+                        if round_num >= max_tool_rounds:
+                            fallback_text = (
+                                "He agotado el límite de operaciones para esta petición sin "
+                                "completar la acción. Pídemelo de nuevo si quieres que lo reintente."
+                            )
+                        else:
+                            fallback_text = (
+                                "No he recibido una respuesta válida del modelo. "
+                                "¿Puedes repetir la petición?"
+                            )
+                        self.new_bubble_signal.emit("ai", "")
+                        self.append_text_signal.emit(fallback_text)
+                        self.messages.append({"role": "assistant", "content": fallback_text})
+                        self.history_save_signal.emit()
+                        self.finished_signal.emit(fallback_text)
+                        return
                     break
 
                 # Loop prevention

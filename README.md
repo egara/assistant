@@ -273,6 +273,7 @@ This block configures Assistant's multi-model intelligence engine. It supports m
   * **`vision_enabled`** *(Boolean)*: Enables base64 vision payloads via screen/clipboard capture.
   * **`timeout`** *(Float, Optional)*: Request timeout in seconds (defaults to `180.0`). Prevents unexpected cuts during large context prefill sequences.
   * **`provider_name`** *(String, Optional)*: Informational label (e.g., `"local"`, `"groq"`).
+  * **`max_tool_rounds`** *(Integer, Optional)*: Maximum number of chained tool-execution rounds per user request (defaults to `6`, hard-capped at `12`). The final allowed round withholds the tools schema to force a plain text answer. Raise it for strong agentic models that chain several searches before answering, or lower it for lightweight models to keep them on a tight budget. If a turn ends without any result, a visible fallback message is shown instead of leaving the request unanswered.
 
 > [!NOTE]
 > **Backward Compatibility**: If you use the classic format with a single `model` and `fallback`, Assistant automatically maps them into the models catalog as `primary` and `fallback`.
