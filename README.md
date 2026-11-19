@@ -348,22 +348,34 @@ Controls the speech-to-text (STT) and text-to-speech (TTS) pipelines.
 
 Enables dynamic integration with external **Model Context Protocol (MCP)** servers over HTTP (SSE or Streamable HTTP). All tools exposed by configured MCP servers are automatically discovered and registered with the local LLM.
 
+#### Redundancy and Priority Selection (Local vs Remote)
+You can configure multiple MCP servers for the same service (e.g., a local Docker SearXNG instance and a LAN/remote server) by assigning them the same **`type`** and setting a **`priority`** integer:
+
 ```json
 "mcp_servers": {
-    "time": {
-        "url": "http://127.0.0.1:32770/sse",
-        "transport": "sse"
-    },
-    "searxng": {
+    "searxng_local": {
         "url": "http://127.0.0.1:32771/mcp",
-        "transport": "streamable_http"
+        "transport": "streamable_http",
+        "type": "web_search",
+        "priority": 100,
+        "description": "Búsqueda en Internet a través de Docker local SearXNG."
+    },
+    "searxng_lan": {
+        "url": "http://192.168.1.50:32771/mcp",
+        "transport": "streamable_http",
+        "type": "web_search",
+        "priority": 50,
+        "description": "Búsqueda en Internet a través de servidor SearXNG en la LAN."
     }
 }
 ```
 
+* **Startup Probe & Redundancy Resolution**: Upon startup, Assistant tests connectivity to all configured MCP servers in parallel. For each group of servers sharing the same `type`, Assistant elects the responsive server with the **highest priority** as active. Other responsive instances in the same group remain in standby.
+* **Warm Disconnection Notice**: If the active MCP server goes down during the session, Assistant immediately informs the user that the server has become unavailable, prompting a restart to re-probe available candidates without hanging or getting stuck.
 * **`url`** *(String)*: The HTTP/SSE endpoint of the running MCP server.
 * **`transport`** *(String)*: The transport protocol (`"sse"` or `"streamable_http"`).
-* **SearXNG Priority & Fallback**: When an MCP server providing `searxng_web_search` is registered, web queries use SearXNG by default. If the SearXNG server is unreachable or fails, Assistant automatically falls back to DuckDuckGo scraping.
+* **`priority`** *(Integer)*: Higher values take precedence when multiple servers share the same `type`.
+* **SearXNG Priority & Fallback**: When an MCP server providing web search is active, queries route through SearXNG. If no SearXNG MCP server is reachable, Assistant falls back to DuckDuckGo scraping.
 
 ---
 
@@ -442,6 +454,7 @@ Assistant features a clean Material Design GUI styled with **SicOS Nerd Font** i
 You can type the following commands directly into the prompt box:
 * **/model**: Lists all available configured models indicating which one is active, or toggles to the next model in the list. Use `/model <name>` (e.g. `/model glm`) to switch directly to a specific model.
 * **/role**: Lists all available system and user roles indicating which one is active. Use `/role <nombre>` (e.g. `/role news`, `/role default`) to switch roles dynamically and alter the system prompt.
+* **/mcp** or **/servers**: Displays the status, priority, and active selection of all configured MCP servers.
 * **/voice** or **/tts**: Toggles text-to-speech spoken audio output on/off.
 * **/about**: Displays application version and architectural details.
 * **/new** or **/reset**: Resets the current conversation context, wipes the chat memory file, and starts a fresh session.
@@ -546,7 +559,7 @@ The codebase follows a modular design separating configuration and properties, e
 * **`src/llm/catalog.py`**: Multi-model intelligence manager (`ModelCatalog`) managing presets, OpenAI client instantiation, runtime model catalog, endpoint discovery (`/models`), and QML selector grouping.
 * **`src/tools/dispatch.py`**: Domain-wide tool dispatcher (`dispatch_tool`) mapping tool calls to implementations and evaluating silent desktop completion policies.
 * **`src/mcp/manager.py`**: Model Context Protocol client manager (`MCPManager`) coordinating SSE/HTTP transport connections, dynamic tool discovery, and remote tool execution.
-* **`src/commands/`**: Command/Registry pattern implementing interactive slash commands (`/new`, `/reset`, `/clear`, `/help`, `/about`, `/voice`, `/tts`, `/model`) through decoupled modules (`session.py`, `system.py`, `voice.py`, `model.py`).
+* **`src/commands/`**: Command/Registry pattern implementing interactive slash commands (`/new`, `/reset`, `/clear`, `/help`, `/about`, `/voice`, `/tts`, `/model`, `/role`, `/mcp`) through decoupled modules (`session.py`, `system.py`, `voice.py`, `model.py`, `role.py`, `mcp.py`).
 * **`src/routing/routing.py`**: Encapsulates `DecisionRouter` for FastFlowLM / d3:edge System One categorization, dynamic category-to-tools resolution, latency measurement, and fallback handling.
 * **`src/tools/time.py`**: Local time/date resolution with IANA timezone support (`get_current_time`).
 * **`src/tools/weather.py`**: Weather forecast resolution with Open-Meteo & wttr.in fallback (`get_weather`).
