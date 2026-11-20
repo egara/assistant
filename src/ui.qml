@@ -572,6 +572,11 @@ ApplicationWindow {
                                         text = "";
                                     }
                                     event.accepted = true;
+                                } else if ((event.key === Qt.Key_V) && (event.modifiers & Qt.ControlModifier)) {
+                                    // If clipboard has an image, attach it and consume event
+                                    if (backend.pasteFromClipboard()) {
+                                        event.accepted = true;
+                                    }
                                 }
                             }
                         }

@@ -571,6 +571,64 @@ class Backend(QObject):
             self._pending_attachments.clear()
             self.pendingAttachmentsChanged.emit([])
 
+    @pyqtSlot(result=bool)
+    def pasteFromClipboard(self):
+        """
+        Check if the system clipboard contains an image.
+        If an image is found (via wl-paste or xclip), save it to temp_dir,
+        add it to pending attachments, and return True.
+        Otherwise return False so standard text paste can proceed.
+        """
+        os.makedirs(props.temp_dir, exist_ok=True)
+        timestamp = int(time.time() * 1000)
+        out_path = os.path.join(props.temp_dir, f"clipboard_{timestamp}.png")
+
+        # 1. Wayland check via wl-paste
+        try:
+            proc = subprocess.run(
+                ["wl-paste", "--list-types"],
+                capture_output=True,
+                text=True,
+                timeout=0.6,
+            )
+            if proc.returncode == 0:
+                types = proc.stdout.strip().splitlines()
+                for t in types:
+                    if t.startswith("image/"):
+                        res = subprocess.run(
+                            ["wl-paste", "-t", t],
+                            capture_output=True,
+                            timeout=1.5,
+                        )
+                        if res.returncode == 0 and len(res.stdout) > 0:
+                            with open(out_path, "wb") as f:
+                                f.write(res.stdout)
+                            if out_path not in self._pending_attachments:
+                                self._pending_attachments.append(out_path)
+                                self.pendingAttachmentsChanged.emit(list(self._pending_attachments))
+                            return True
+        except (subprocess.SubprocessError, OSError):
+            pass
+
+        # 2. X11 fallback check via xclip
+        try:
+            res = subprocess.run(
+                ["xclip", "-selection", "clipboard", "-t", "image/png", "-o"],
+                capture_output=True,
+                timeout=1.0,
+            )
+            if res.returncode == 0 and len(res.stdout) > 0:
+                with open(out_path, "wb") as f:
+                    f.write(res.stdout)
+                if out_path not in self._pending_attachments:
+                    self._pending_attachments.append(out_path)
+                    self.pendingAttachmentsChanged.emit(list(self._pending_attachments))
+                return True
+        except (subprocess.SubprocessError, OSError):
+            pass
+
+        return False
+
     @pyqtSlot(str)
     def processInput(self, text):
         clean_cmd = text.strip()
