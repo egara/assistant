@@ -498,7 +498,7 @@ ApplicationWindow {
                 color: "#181d28"
                 radius: 14
                 border.color: inputBox.activeFocus ? "#59c2ff" : "#283040"
-                border.width: inputBox.activeFocus ? 1.5 : 1
+                border.width: 1
 
                 RowLayout {
                     anchors.fill: parent
@@ -541,6 +541,7 @@ ApplicationWindow {
                             placeholderText: "Escribe un mensaje o pulsa el micro..."
                             placeholderTextColor: "#4f5a6b"
                             color: "#e6e1cf"
+                            background: null
                             font.family: window.monoFont
                             font.pixelSize: window.systemFontSize
                             wrapMode: TextArea.Wrap
