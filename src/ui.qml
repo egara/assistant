@@ -15,6 +15,12 @@ ApplicationWindow {
         window.hide();
     }
 
+    onVisibleChanged: {
+        if (visible) {
+            inputBox.forceActiveFocus();
+        }
+    }
+
     property int activeAiIndex: -1
     property bool userScrolledUp: false
     property bool isVoiceActive: false

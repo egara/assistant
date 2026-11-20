@@ -412,20 +412,33 @@ class Backend(QObject):
         self._input_enabled = True
 
     def check_signals(self):
-        if os.path.exists(os.path.join(props.temp_dir, "gui_signal")):
-            os.remove(os.path.join(props.temp_dir, "gui_signal"))
-            if (
-                self.is_recording
-                or not getattr(self, "_input_enabled", True)
-                or (
-                    hasattr(self, "ai_thread")
-                    and self.ai_thread is not None
-                    and self.ai_thread.isRunning()
-                )
-            ):
-                self.interrupt_ai()
+        sig_path = os.path.join(props.temp_dir, "gui_signal")
+        if os.path.exists(sig_path):
+            sig_content = "toggle"
+            try:
+                with open(sig_path, "r", encoding="utf-8") as f:
+                    sig_content = f.read().strip()
+                os.remove(sig_path)
+            except OSError:
+                pass
+
+            if sig_content == "voice":
+                if (
+                    self.is_recording
+                    or not getattr(self, "_input_enabled", True)
+                    or (
+                        hasattr(self, "ai_thread")
+                        and self.ai_thread is not None
+                        and self.ai_thread.isRunning()
+                    )
+                ):
+                    self.interrupt_ai()
+                else:
+                    self.startVoiceRecording()
             else:
-                self.startVoiceRecording()
+                # Window toggle signal: show if hidden, hide if visible
+                if hasattr(self, "tray_manager") and self.tray_manager:
+                    self.tray_manager.toggle_window()
 
     @pyqtSlot(str)
     def processInput(self, text):
@@ -851,6 +864,14 @@ class TrayManager(QObject):
         self.tray.show()
 
     @pyqtSlot()
+    def toggle_window(self):
+        if self.window:
+            if self.window.isVisible():
+                self.window.hide()
+            else:
+                self.show_window()
+
+    @pyqtSlot()
     def show_window(self):
         if self.window:
             self.window.show()
@@ -922,6 +943,7 @@ if __name__ == "__main__":
 
     window = engine.rootObjects()[0]
     tray_manager = TrayManager(app, window, backend)
+    backend.tray_manager = tray_manager
 
     QTimer.singleShot(100, backend.emit_initial_state)
 
