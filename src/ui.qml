@@ -15,6 +15,12 @@ ApplicationWindow {
         window.hide();
     }
 
+    onVisibleChanged: {
+        if (visible) {
+            inputBox.forceActiveFocus();
+        }
+    }
+
     property int activeAiIndex: -1
     property bool userScrolledUp: false
     property bool isVoiceActive: false
@@ -203,7 +209,9 @@ ApplicationWindow {
                     y: 3
 
                     anchors.right: role === "user" ? parent.right : undefined
+                    anchors.rightMargin: role === "user" ? 6 : 0
                     anchors.left: (role === "ai" || role === "approval") ? parent.left : undefined
+                    anchors.leftMargin: (role === "ai" || role === "approval") ? 6 : 0
                     anchors.horizontalCenter: role === "sys" ? parent.horizontalCenter : undefined
 
                     width: contentCol.width + 30
@@ -689,7 +697,7 @@ ApplicationWindow {
                             }
 
                             Text {
-                                text: "About (v1.1.1)"
+                                text: "About (v1.2.0)"
                                 color: "#828c99"
                                 font.family: window.monoFont
                                 font.pixelSize: 11

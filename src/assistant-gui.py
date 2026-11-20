@@ -54,10 +54,12 @@ from tools import (
     build_manage_desktop_tool,
     manage_desktop,
     configure_hyprland,
+    get_cinema_showtimes,
+    CINEMA_TOOLS,
 )
 from routing import DecisionRouter
 from commands import create_default_registry, CommandContext
-from mcp import MCPManager, MCP_AVAILABLE
+from mcp_client import MCPManager, MCP_AVAILABLE
 from llm import ModelCatalog, AIGeneratorThread
 from voice import TTSWorkerThread, stop_all_media_playback
 from properties import PropertiesManager
@@ -122,6 +124,7 @@ exposed_mcp_tools = [
 tools = (
     TIME_TOOLS
     + WEATHER_TOOLS
+    + CINEMA_TOOLS
     + WEB_TOOLS
     + OBSIDIAN_TOOLS
     + OS_TOOLS
@@ -177,11 +180,9 @@ def process_prompt(user_query):
 
 
 ## QTHREADS
-# Maximum number of chained tool-execution rounds per user request. Strong
-# agentic models (e.g. GLM-5.3-Flash) often chain several searches before
-# answering; the final allowed round withholds the tools schema to force a
-# plain text answer instead of letting the model call tools indefinitely.
-MAX_TOOL_ROUNDS = 4
+# Tool-execution round limits are managed per model by the LLM generator
+# (src/llm/generator.py: DEFAULT_MAX_TOOL_ROUNDS). Override per model with the
+# "max_tool_rounds" key in each model spec of config.json.
 
 
 ## BACKEND CONTROLLER (Bridged to QML)
@@ -226,9 +227,23 @@ class Backend(QObject):
             get_models_list=self.get_models_list,
             active_model_changed=lambda text: self.activeModelChanged.emit(text),
             available_models_changed=lambda lst: self.availableModelsChanged.emit(lst),
+            get_available_roles=lambda: props.get_available_roles(),
+            get_active_role=lambda: props.active_role,
+            set_active_role=self._set_active_role,
+            get_mcp_status=lambda: props.get_mcp_status(),
         )
 
         self.load_history()
+
+    def _set_active_role(self, role_id: str) -> bool:
+        success = props.set_active_role(role_id)
+        if success:
+            new_prompt = self._build_system_prompt()
+            if self.messages and self.messages[0].get("role") == "system":
+                self.messages[0]["content"] = new_prompt
+            else:
+                self.messages.insert(0, {"role": "system", "content": new_prompt})
+        return success
 
     def _set_active_model_key(self, key: str) -> None:
         props.set_active_model_key(key)
@@ -299,8 +314,11 @@ class Backend(QObject):
             "`get_current_time` to frame your search queries and final report. NEVER revert to pre-training cutoff dates or assume past years.\n"
             "- Keep answers concise, natural, and conversational."
         )
-        if props.user_context and not props.user_context.startswith("<!--"):
-            system_content += f"\n\n### USER CONTEXT:\n{props.user_context}"
+
+        role_prompt = props.active_role_prompt
+        if role_prompt and not role_prompt.startswith("<!--"):
+            system_content += f"\n\n### ACTIVE ROLE ({props.active_role.upper()}):\n{role_prompt}"
+
         return system_content
 
     def load_history(self):
@@ -394,20 +412,33 @@ class Backend(QObject):
         self._input_enabled = True
 
     def check_signals(self):
-        if os.path.exists(os.path.join(props.temp_dir, "gui_signal")):
-            os.remove(os.path.join(props.temp_dir, "gui_signal"))
-            if (
-                self.is_recording
-                or not getattr(self, "_input_enabled", True)
-                or (
-                    hasattr(self, "ai_thread")
-                    and self.ai_thread is not None
-                    and self.ai_thread.isRunning()
-                )
-            ):
-                self.interrupt_ai()
+        sig_path = os.path.join(props.temp_dir, "gui_signal")
+        if os.path.exists(sig_path):
+            sig_content = "toggle"
+            try:
+                with open(sig_path, "r", encoding="utf-8") as f:
+                    sig_content = f.read().strip()
+                os.remove(sig_path)
+            except OSError:
+                pass
+
+            if sig_content == "voice":
+                if (
+                    self.is_recording
+                    or not getattr(self, "_input_enabled", True)
+                    or (
+                        hasattr(self, "ai_thread")
+                        and self.ai_thread is not None
+                        and self.ai_thread.isRunning()
+                    )
+                ):
+                    self.interrupt_ai()
+                else:
+                    self.startVoiceRecording()
             else:
-                self.startVoiceRecording()
+                # Window toggle signal: show if hidden, hide if visible
+                if hasattr(self, "tray_manager") and self.tray_manager:
+                    self.tray_manager.toggle_window()
 
     @pyqtSlot(str)
     def processInput(self, text):
@@ -833,6 +864,14 @@ class TrayManager(QObject):
         self.tray.show()
 
     @pyqtSlot()
+    def toggle_window(self):
+        if self.window:
+            if self.window.isVisible():
+                self.window.hide()
+            else:
+                self.show_window()
+
+    @pyqtSlot()
     def show_window(self):
         if self.window:
             self.window.show()
@@ -904,6 +943,7 @@ if __name__ == "__main__":
 
     window = engine.rootObjects()[0]
     tray_manager = TrayManager(app, window, backend)
+    backend.tray_manager = tray_manager
 
     QTimer.singleShot(100, backend.emit_initial_state)
 

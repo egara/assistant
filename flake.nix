@@ -45,7 +45,7 @@
             }:
             pkgs.stdenv.mkDerivation rec {
               pname = "assistant";
-              version = "1.1.1";
+              version = "1.2.0";
 
               src = ./.;
 
@@ -99,6 +99,10 @@
                   mkdir -p $out/share/assistant/knowledge
                   cp -r src/knowledge/* $out/share/assistant/knowledge/
                 fi
+                if [ -d "src/roles" ]; then
+                  mkdir -p $out/share/assistant/roles
+                  cp -r src/roles/* $out/share/assistant/roles/
+                fi
 
                 cp ${whisperSmall} $out/share/assistant/models/ggml-small.bin
 
@@ -112,7 +116,7 @@
                 cp -r src/tools $out/lib/assistant/
                 cp -r src/routing $out/lib/assistant/
                 cp -r src/commands $out/lib/assistant/
-                cp -r src/mcp $out/lib/assistant/
+                cp -r src/mcp_client $out/lib/assistant/
                 cp -r src/llm $out/lib/assistant/
                 cp -r src/voice $out/lib/assistant/
                 cp src/assistant-gui.py $out/lib/assistant/assistant-gui.py
@@ -239,20 +243,20 @@
               type = lib.types.attrs;
               default = { };
             };
-            context = lib.mkOption {
+            defaultRole = lib.mkOption {
               type = lib.types.lines;
               default = "";
-              description = "System context instructions placed in ~/.config/assistant/context.md.";
+              description = "Default role system prompt instructions placed in ~/.config/assistant/roles/default.md.";
             };
             enableConfig = lib.mkOption {
               type = lib.types.bool;
               default = true;
               description = "Whether to generate and manage ~/.config/assistant/config.json via Home Manager. Set to false to use an existing local config file.";
             };
-            enableContext = lib.mkOption {
+            enableDefaultRole = lib.mkOption {
               type = lib.types.bool;
               default = true;
-              description = "Whether to generate and manage ~/.config/assistant/context.md via Home Manager. Set to false to use an existing local context file.";
+              description = "Whether to generate and manage ~/.config/assistant/roles/default.md via Home Manager. Set to false to use an existing local role file.";
             };
           };
 
@@ -287,8 +291,8 @@
               xdg.configFile."assistant/config.json" = lib.mkIf (cfg.enableConfig && finalSettings != { }) {
                 text = builtins.toJSON finalSettings;
               };
-              xdg.configFile."assistant/context.md" = lib.mkIf (cfg.enableContext && cfg.context != "") {
-                text = cfg.context;
+              xdg.configFile."assistant/roles/default.md" = lib.mkIf (cfg.enableDefaultRole && cfg.defaultRole != "") {
+                text = cfg.defaultRole;
               };
             }
           );

@@ -39,6 +39,7 @@ from .hyprland import (
     manage_desktop,
     configure_hyprland,
 )
+from .cinema import get_cinema_showtimes, TOOL_DEFINITIONS as CINEMA_TOOLS
 from .dispatch import dispatch_tool
 
 __all__ = [
@@ -48,6 +49,9 @@ __all__ = [
     # Weather
     "get_weather",
     "WEATHER_TOOLS",
+    # Cinema
+    "get_cinema_showtimes",
+    "CINEMA_TOOLS",
     # Obsidian
     "search_obsidian",
     "read_obsidian",

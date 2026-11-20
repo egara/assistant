@@ -5,6 +5,8 @@ from .session import SessionCommand
 from .system import HelpCommand, AboutCommand
 from .voice import VoiceCommand
 from .model import ModelCommand
+from .role import RoleCommand
+from .mcp import MCPCommand
 
 
 def create_default_registry() -> CommandRegistry:
@@ -24,6 +26,12 @@ def create_default_registry() -> CommandRegistry:
     # Model management (/model)
     registry.register(ModelCommand())
 
+    # Role management (/role)
+    registry.register(RoleCommand())
+
+    # MCP server status (/mcp)
+    registry.register(MCPCommand())
+
     return registry
 
 
@@ -36,5 +44,7 @@ __all__ = [
     "AboutCommand",
     "VoiceCommand",
     "ModelCommand",
+    "RoleCommand",
+    "MCPCommand",
     "create_default_registry",
 ]

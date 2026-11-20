@@ -17,7 +17,7 @@ class PropertiesManager:
     - Path resolution (Config, Data, State, Knowledge, Sounds, QML)
     - Configuration loading (~/.config/assistant/config.json)
     - Dynamic runtime properties (active model, voice/TTS states, router status)
-    - User context (~/.config/assistant/context.md)
+    - Roles management (system & user roles)
     - Change listeners / observer callbacks for dynamic settings
     """
 
@@ -39,7 +39,7 @@ class PropertiesManager:
         if getattr(self, "_initialized", False):
             return
 
-        self.version = "1.1.1"
+        self.version = "1.2.0"
         self._listeners: Dict[str, List[Callable[[Any], None]]] = {}
 
         # 1. Base Directories & XDG Paths
@@ -53,9 +53,10 @@ class PropertiesManager:
         self.log_file = os.path.join(self.state_dir, "assistant.log")
         self.user_knowledge_file = os.path.join(self.data_dir, "hyprland_knowledge.json")
         self.knowledge_dir = os.path.join(self.config_dir, "knowledge")
+        self.roles_dir = os.path.join(self.config_dir, "roles")
 
         # Ensure base directories exist
-        for d in (self.config_dir, self.data_dir, self.sound_dir, self.state_dir, self.knowledge_dir):
+        for d in (self.config_dir, self.data_dir, self.sound_dir, self.state_dir, self.knowledge_dir, self.roles_dir):
             try:
                 os.makedirs(d, exist_ok=True)
             except OSError as e:
@@ -65,6 +66,7 @@ class PropertiesManager:
         self.base_dir = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
         self.system_knowledge_dir = self._resolve_system_knowledge_dir()
         self.system_knowledge_file = self._resolve_system_knowledge_file()
+        self.system_roles_dir = self._resolve_system_roles_dir()
         self.qml_file = self._resolve_qml_file()
 
         # Seed files if needed
@@ -73,16 +75,15 @@ class PropertiesManager:
         # 3. Load config.json
         self._config: Dict[str, Any] = self._load_config()
 
-        # 4. Context Resolution
-        self.context_path = os.path.expanduser(
-            self.get("llm.system_context", "~/.config/assistant/context.md")
-        )
-        self.user_context = self._load_or_create_context()
+        # 4. Role Resolution
+        self.active_role = "default"
+        self.active_role_prompt = self.get_role_prompt("default")
 
         # 5. Dynamic Runtime Properties
         self.is_voice_mode = (launch_mode == "--voice")
         self.tts_enabled = False
         self.active_model_key = ""
+        self.mcp_status: Dict[str, Dict[str, Any]] = {}
 
         # Default model initialization from config if present
         default_model = self.get("llm.default_model") or self.get("llm.model", "")
@@ -141,6 +142,17 @@ class PropertiesManager:
                 return path
         return os.path.join(self.base_dir, "knowledge")
 
+    def _resolve_system_roles_dir(self) -> str:
+        candidates = [
+            os.path.join(self.base_dir, "roles"),
+            os.path.abspath(os.path.join(self.base_dir, "..", "share", "assistant", "roles")),
+            os.path.abspath(os.path.join(self.base_dir, "..", "..", "share", "assistant", "roles")),
+        ]
+        for path in candidates:
+            if os.path.isdir(path):
+                return path
+        return os.path.join(self.base_dir, "roles")
+
     def _seed_user_knowledge(self) -> None:
         # Seed modular markdown knowledge
         if os.path.exists(self.system_knowledge_dir):
@@ -170,25 +182,6 @@ class PropertiesManager:
         except (OSError, json.JSONDecodeError) as e:
             logger.error(f"[PropertiesManager] Failed to load {self.config_file}: {e}")
             return {}
-
-    def _load_or_create_context(self) -> str:
-        if os.path.exists(self.context_path):
-            try:
-                with open(self.context_path, "r", encoding="utf-8") as f:
-                    return f.read().strip()
-            except OSError as e:
-                logger.warning(f"Could not read context at {self.context_path}: {e}")
-                return ""
-        else:
-            try:
-                os.makedirs(os.path.dirname(self.context_path), exist_ok=True)
-                with open(self.context_path, "w", encoding="utf-8") as f:
-                    f.write(
-                        "<!-- Write your custom context here. Assistant will read this to personalize its answers. -->\n"
-                    )
-            except OSError as e:
-                logger.warning(f"Could not create default context file at {self.context_path}: {e}")
-            return ""
 
     # -------------------------------------------------------------------------
     # Generic Property Accessors (Dot notation support)
@@ -307,3 +300,114 @@ class PropertiesManager:
     def set_voice_mode(self, enabled: bool) -> None:
         self.is_voice_mode = enabled
         self._notify_listeners("is_voice_mode", enabled)
+
+    def set_mcp_status(self, status: Dict[str, Dict[str, Any]]) -> None:
+        self.mcp_status = status
+        self._notify_listeners("mcp_status", status)
+
+    def get_mcp_status(self) -> Dict[str, Dict[str, Any]]:
+        return self.mcp_status
+
+    # -------------------------------------------------------------------------
+    # Roles Management
+    # -------------------------------------------------------------------------
+
+    def get_available_roles(self) -> Dict[str, Dict[str, Any]]:
+        """
+        Discover and return all available roles by aggregating system roles
+        and user custom roles (~/.config/assistant/roles/).
+        User roles take precedence over system roles with the same identifier.
+        """
+        roles: Dict[str, Dict[str, Any]] = {}
+
+        # 1. System roles
+        sys_index = os.path.join(self.system_roles_dir, "index.json")
+        if os.path.exists(sys_index):
+            try:
+                with open(sys_index, "r", encoding="utf-8") as f:
+                    data = json.load(f)
+                    for r_id, r_info in data.get("roles", {}).items():
+                        r_info_copy = dict(r_info)
+                        r_info_copy["source"] = "system"
+                        roles[r_id] = r_info_copy
+            except (OSError, json.JSONDecodeError) as e:
+                logger.warning(f"[Roles] Failed to read system roles index {sys_index}: {e}")
+
+        # 2. User roles (roles.json or index.json in ~/.config/assistant/roles/)
+        user_index_candidates = [
+            os.path.join(self.roles_dir, "roles.json"),
+            os.path.join(self.roles_dir, "index.json"),
+        ]
+        for u_idx in user_index_candidates:
+            if os.path.exists(u_idx):
+                try:
+                    with open(u_idx, "r", encoding="utf-8") as f:
+                        data = json.load(f)
+                        for r_id, r_info in data.get("roles", {}).items():
+                            r_info_copy = dict(r_info)
+                            r_info_copy["source"] = "user"
+                            roles[r_id] = r_info_copy
+                except (OSError, json.JSONDecodeError) as e:
+                    logger.warning(f"[Roles] Failed to read user roles index {u_idx}: {e}")
+
+        # 3. Auto-discover standalone .md files in user roles directory
+        if os.path.exists(self.roles_dir):
+            try:
+                for entry in os.listdir(self.roles_dir):
+                    if entry.endswith(".md"):
+                        r_id = os.path.splitext(entry)[0]
+                        if r_id not in roles:
+                            roles[r_id] = {
+                                "name": r_id.capitalize(),
+                                "description": f"Custom user role from {entry}",
+                                "file": entry,
+                                "source": "user",
+                            }
+            except OSError as e:
+                logger.warning(f"[Roles] Failed to list user roles dir {self.roles_dir}: {e}")
+
+        return roles
+
+    def get_role_prompt(self, role_id: str) -> str:
+        """
+        Load and return the markdown content for a given role identifier.
+        Checks user directory first (~/.config/assistant/roles/<file>),
+        then system directory (<system_roles_dir>/<file>).
+        """
+        roles = self.get_available_roles()
+        role_info = roles.get(role_id)
+        filename = role_info.get("file", f"{role_id}.md") if role_info else f"{role_id}.md"
+
+        # Check user directory first (user override)
+        user_file = os.path.join(self.roles_dir, filename)
+        if os.path.exists(user_file):
+            try:
+                with open(user_file, "r", encoding="utf-8") as f:
+                    return f.read().strip()
+            except OSError as e:
+                logger.warning(f"[Roles] Could not read user role file {user_file}: {e}")
+
+        # Check system directory fallback
+        sys_file = os.path.join(self.system_roles_dir, filename)
+        if os.path.exists(sys_file):
+            try:
+                with open(sys_file, "r", encoding="utf-8") as f:
+                    return f.read().strip()
+            except OSError as e:
+                logger.warning(f"[Roles] Could not read system role file {sys_file}: {e}")
+
+        return ""
+
+    def set_active_role(self, role_id: str) -> bool:
+        """
+        Switch active role, update active_role_prompt, and notify observers.
+        Returns True if successful, False if the role does not exist.
+        """
+        roles = self.get_available_roles()
+        if role_id not in roles:
+            return False
+
+        self.active_role = role_id
+        self.active_role_prompt = self.get_role_prompt(role_id)
+        self._notify_listeners("active_role", role_id)
+        return True

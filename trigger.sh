@@ -48,7 +48,11 @@ if [[ "$ASR_ENABLED" != "true" || -z "$ASR_ENDPOINT" ]]; then
 fi
 
 if pgrep -f "assistant-gui" > /dev/null; then
-    echo "toggle" > "$TEMP_DIR/gui_signal"
+    if [[ "$MODE_VOICE" == true ]]; then
+        echo "voice" > "$TEMP_DIR/gui_signal"
+    else
+        echo "toggle" > "$TEMP_DIR/gui_signal"
+    fi
     exit 0
 fi
 

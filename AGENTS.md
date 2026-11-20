@@ -20,14 +20,17 @@ This document serves as the persistent contextual memory for AI agents (and huma
    - **No Hardcoded User Paths**: Never hardcode user paths or usernames (e.g. `egarcia`). Use `os.environ.get("USER") or getpass.getuser()` and `os.path.expanduser("~")`.
    - **Clean Imports & Decoupling**: Do not leave unused or orphaned imports in core modules. Keep domain logic decoupled into dedicated packages.
 
-4. **Nix Packaging & File Synchronization (`flake.nix`)**:
+4. **Nix Packaging & Script Synchronization (`flake.nix` & `install.sh`)**:
    - Whenever a new Python package directory is created under `src/` (such as `src/tools/`, `src/routing/`, or `src/commands/`), ensure it is installed in `flake.nix` under `$out/lib/assistant/` so that Nix builds and wrapped binaries retain full module access via `PYTHONPATH`.
+   - **Keep `install.sh` Up to Date**: In tandem with `flake.nix`, whenever new Python packages, system dependencies, CLI tools, external pip packages, assets, or configuration structures are added or modified, update [`install.sh`](file:///home/egarcia/Development/git/assistant/install.sh) to ensure non-Nix environments (Arch, Debian/Ubuntu, Fedora) can build, install, and execute Assistant seamlessly. All paths in `install.sh` must follow the standard `~/.local/share/assistant` layout and set `PYTHONPATH` to include its internal `lib/` directory.
 
-5. **Knowledge Files & Runtime Paths**:
+5. **Knowledge & Roles Files & Runtime Paths**:
    - Base system recipe knowledge: [`src/hyprland_knowledge.json`](file:///home/egarcia/Development/git/assistant/src/hyprland_knowledge.json).
    - Base system modular docs: `src/knowledge/*.md`.
+   - Base system roles: `src/roles/` (`index.json`, `default.md`).
    - User mutable recipe layer: `~/.local/share/assistant/hyprland_knowledge.json`.
    - User mutable modular docs: `~/.config/assistant/knowledge/*.md`.
+   - User mutable roles layer: `~/.config/assistant/roles/*.md` and `roles.json`.
    - User runtime state & logs (debugging):
      - Log file: `~/.local/state/assistant/assistant.log` (contains routing decisions, tool calls, and LLM completions).
      - Chat history: `~/.local/state/assistant/chat_history.json` (contains message turns, tool_calls, and role payloads).
@@ -40,6 +43,7 @@ This document serves as the persistent contextual memory for AI agents (and huma
 ```text
 assistant/
 ├── flake.nix                  # Nix Flake build definition & Home Manager module
+├── install.sh                 # Generic Linux standalone installer (Arch, Debian/Ubuntu, Fedora)
 ├── trigger.sh                 # Launcher script with dynamic VAD/toggle modes
 ├── README.md                  # User-facing documentation & architecture overview
 ├── AGENTS.md                  # Persistent instructions and guidelines for AI agents
@@ -48,6 +52,7 @@ assistant/
     ├── ui.qml                 # Native QtQuick / Material Design graphical user interface
     ├── hyprland_knowledge.json# Built-in Hyprland action recipes & command intents
     ├── knowledge/             # Modular markdown documentation (hardware, apps, shortcuts...)
+    ├── roles/                 # Built-in system roles (index.json, default.md)
     ├── properties/            # Singleton Properties & Configuration Manager package
     │   ├── __init__.py        # Exports PropertiesManager
     │   └── manager.py         # Centralized paths, config loading, dynamic state & listeners
@@ -64,7 +69,7 @@ assistant/
     ├── routing/               # Decision Router package (System One / FastFlowLM)
     │   ├── __init__.py        # Exports DecisionRouter and category mapping
     │   └── routing.py         # FastFlowLM /v1/systemone d3:edge intent classification
-    ├── mcp/                   # Model Context Protocol (MCP) package
+    ├── mcp_client/            # Model Context Protocol (MCP) package
     │   ├── __init__.py        # Exports MCPManager and MCP_AVAILABLE
     │   └── manager.py         # SSE/HTTP transport connections and tool discovery
     ├── llm/                   # Multi-Model LLM Catalog package
@@ -80,7 +85,8 @@ assistant/
         ├── session.py         # /new, /reset, /clear lifecycle commands
         ├── system.py          # /help, /about information commands
         ├── voice.py           # /voice, /tts speech output toggle commands
-        └── model.py           # /model listing & dynamic switching
+        ├── model.py           # /model listing & dynamic switching
+        └── role.py            # /role listing & persona switching
 ```
 
 ### Core Components Details
@@ -116,14 +122,68 @@ assistant/
 Before committing and pushing changes:
 1. **Python Compilation**:
    ```bash
-   python3 -m py_compile src/assistant-gui.py src/tools/*.py src/routing/*.py src/commands/*.py
+   python3 -m py_compile src/assistant-gui.py src/properties/*.py src/tools/*.py src/routing/*.py src/commands/*.py src/llm/*.py src/voice/*.py src/mcp_client/*.py
    ```
 2. **Environment & Import Verification (Nix)**:
    ```bash
-   nix develop --command python3 -c "import tools, routing, commands; print('Imports valid!')"
+   nix develop --command python3 -c "import properties, tools, routing, commands, llm, voice, mcp_client; print('Imports valid!')"
    ```
 3. **Git Sanity Check**:
    ```bash
    git status
    git diff
    ```
+
+---
+
+## 🚀 Release Workflow & Protocol
+
+Whenever the user requests a new release (e.g. `vX.Y.Z`), agents must strictly follow these sequential steps:
+
+1. **Tag Version in Source Code**:
+   Update the version string across all manifest and core files:
+   - `flake.nix`: `version = "X.Y.Z";`
+   - `src/properties/manager.py`: `self.version = "X.Y.Z"`
+   - `src/ui.qml`: `text: "About (vX.Y.Z)"`
+   - Commit changes to `devel`:
+     ```bash
+     git add flake.nix src/properties/manager.py src/ui.qml
+     git commit -m "chore(release): bump version to X.Y.Z"
+     git push origin devel
+     ```
+
+2. **Merge `devel` into `main`**:
+   Ensure branch history and clean merges:
+   ```bash
+   git checkout main
+   git pull origin main
+   git merge --no-ff devel -m "chore(release): merge devel into main for vX.Y.Z"
+   ```
+
+3. **Create and Push Annotated Git Tag**:
+   ```bash
+   git tag -a vX.Y.Z -m "Release vX.Y.Z: <Summary of release highlights>"
+   git push origin main
+   git push origin vX.Y.Z
+   ```
+
+4. **Return to `devel` Branch**:
+   ```bash
+   git checkout devel
+   ```
+
+5. **Generate Local Release Notes File**:
+   Create a temporary release notes markdown document named `<version>.md` (e.g., `v1.1.0.md` or `1.1.0.md` as requested) directly in the repository root.
+   - **Language & Tone**: Strictly written in English, professional, clear, and without emojis.
+   - **Required Structure**:
+     ```markdown
+     # Assistant vX.Y.Z Release Notes
+
+     ## New Features
+     - Detailed list of features introduced.
+
+     ## Bug Fixes and Performance Improvements
+     - Detailed list of bug fixes, refactorings, and optimizations.
+     ```
+   - **CRITICAL**: Do **NOT** stage, commit, or push this release notes file to Git. It is a local scratch file intended only for the user to copy/paste into GitHub Releases and delete manually.
+

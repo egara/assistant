@@ -33,6 +33,7 @@ class ModelCatalog:
                     m_timeout = float(spec.get("timeout", 180.0))
                     m_vision = spec.get("vision_enabled", True)
                     m_provider = spec.get("provider_name", "local")
+                    m_max_rounds = spec.get("max_tool_rounds")
 
                     client_inst = OpenAI(
                         base_url=m_url,
@@ -48,6 +49,7 @@ class ModelCatalog:
                         "api_key": m_key_auth,
                         "vision_enabled": m_vision,
                         "provider_name": m_provider,
+                        "max_tool_rounds": m_max_rounds,
                         "is_preset": True,
                     }
 
@@ -59,6 +61,7 @@ class ModelCatalog:
             primary_timeout = float(self.config.get("timeout", 180.0))
             primary_vision = self.config.get("vision_enabled", True)
             primary_provider = self.config.get("provider_name", "local")
+            primary_max_rounds = self.config.get("max_tool_rounds")
 
             primary_client = OpenAI(
                 base_url=primary_url,
@@ -75,6 +78,7 @@ class ModelCatalog:
                 "api_key": primary_key,
                 "vision_enabled": primary_vision,
                 "provider_name": primary_provider,
+                "max_tool_rounds": primary_max_rounds,
                 "is_preset": True,
             }
 
