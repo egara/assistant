@@ -363,8 +363,8 @@ ApplicationWindow {
                         delegate: Rectangle {
                             height: 28
                             radius: 14
-                            color: "#1a2332"
-                            border.color: isVisionSupported ? "#59c2ff" : "#e5b454"
+                            color: "#181d28"
+                            border.color: "#283040"
                             border.width: 1
                             implicitWidth: chipRow.implicitWidth + 18
 
@@ -375,7 +375,7 @@ ApplicationWindow {
 
                                 Text {
                                     text: "󰏫"
-                                    color: isVisionSupported ? "#59c2ff" : "#e5b454"
+                                    color: "#59c2ff"
                                     font.family: window.monoFont
                                     font.pixelSize: 12
                                     anchors.verticalCenter: parent.verticalCenter

@@ -12,7 +12,25 @@ import shutil
 import logging
 from logging.handlers import RotatingFileHandler
 
+import glob
 import mimetypes
+
+# Fix GLib/GTK schema availability on NixOS/Hyprland so native dialogs never crash
+def _ensure_glib_schemas():
+    current = os.environ.get("XDG_DATA_DIRS", "")
+    schema_dirs = []
+    for pattern in [
+        "/nix/store/*gtk+3*/share/gsettings-schemas/*",
+        "/nix/store/*gsettings-desktop-schemas*/share/gsettings-schemas/*",
+    ]:
+        for d in glob.glob(pattern):
+            if os.path.isdir(d):
+                schema_dirs.append(d)
+    if schema_dirs:
+        extra = ":".join(schema_dirs)
+        os.environ["XDG_DATA_DIRS"] = f"{extra}:{current}" if current else extra
+
+_ensure_glib_schemas()
 
 from PyQt6.QtWidgets import QApplication, QSystemTrayIcon, QMenu, QFileDialog
 from PyQt6.QtGui import QIcon, QPixmap, QPainter, QColor, QFont, QAction, QPainterPath
@@ -522,35 +540,16 @@ class Backend(QObject):
     @pyqtSlot()
     def selectFilesDialog(self):
         """Open system file picker to attach one or multiple files."""
-        # Check if environment requires DontUseNativeDialog to prevent GLib/GTK schema aborts
-        saved_theme = os.environ.get("QT_QPA_PLATFORMTHEME")
-        saved_style = os.environ.get("QT_STYLE_OVERRIDE")
-        options = QFileDialog.Option(0)
         try:
-            # Under Linux desktops without gsettings-desktop-schemas (e.g. standalone Hyprland),
-            # the GTK platform theme crashes GLib with SIGABRT (134) when opening GtkFileChooser.
-            # Stripping the GTK platform theme for QFileDialog ensures Qt's robust built-in dialog is used.
-            if saved_theme:
-                os.environ.pop("QT_QPA_PLATFORMTHEME", None)
-            if saved_style:
-                os.environ.pop("QT_STYLE_OVERRIDE", None)
-            options = QFileDialog.Option.DontUseNativeDialog
-
             files, _ = QFileDialog.getOpenFileNames(
                 None,
                 "Seleccionar archivos para adjuntar",
                 os.path.expanduser("~"),
-                "Todos los archivos (*)",
-                options=options
+                "Todos los archivos (*)"
             )
         except Exception as e:
             logger.error(f"Error opening file dialog: {e}")
             files = []
-        finally:
-            if saved_theme is not None:
-                os.environ["QT_QPA_PLATFORMTHEME"] = saved_theme
-            if saved_style is not None:
-                os.environ["QT_STYLE_OVERRIDE"] = saved_style
 
         if files:
             for f in files:
