@@ -12,7 +12,9 @@ import shutil
 import logging
 from logging.handlers import RotatingFileHandler
 
-from PyQt6.QtWidgets import QApplication, QSystemTrayIcon, QMenu
+import mimetypes
+
+from PyQt6.QtWidgets import QApplication, QSystemTrayIcon, QMenu, QFileDialog
 from PyQt6.QtGui import QIcon, QPixmap, QPainter, QColor, QFont, QAction, QPainterPath
 from PyQt6.QtQml import QQmlApplicationEngine
 from PyQt6.QtCore import Qt, QTimer, pyqtSignal, pyqtSlot, QThread, QObject, QUrl
@@ -150,33 +152,76 @@ def resolve_tools_for_query(user_query, recent_context="", base_url=""):
     )
 
 
-def process_prompt(user_query):
-    image_base64, mime_type = None, "image/png"
+def process_prompt(user_query, attached_files=None, vision_supported=True):
+    """
+    Format prompt into standard text or multimodal OpenAI payload.
+    Supports attached image files with base64 data URIs.
+    """
+    attached_files = attached_files or []
+    image_parts = []
+    non_image_notes = []
+
+    # 1. Process files explicitly attached
+    for file_path in attached_files:
+        if not os.path.exists(file_path):
+            continue
+        mime_type, _ = mimetypes.guess_type(file_path)
+        mime_type = mime_type or "application/octet-stream"
+        file_name = os.path.basename(file_path)
+
+        if mime_type.startswith("image/"):
+            if vision_supported:
+                try:
+                    with open(file_path, "rb") as f:
+                        b64_data = base64.b64encode(f.read()).decode("utf-8")
+                    image_parts.append({
+                        "type": "image_url",
+                        "image_url": {
+                            "url": f"data:{mime_type};base64,{b64_data}"
+                        }
+                    })
+                except OSError as e:
+                    logger.warning(f"Failed to read image attachment {file_path}: {e}")
+            else:
+                non_image_notes.append(f"[Attached Image: {file_name} (Vision disabled for current model)]")
+        else:
+            # Future extension: text/pdf/docs attachments
+            non_image_notes.append(f"[Attached File: {file_name} ({file_path})]")
+
+    # 2. Legacy screenshot / clipboard syntax compatibility: [IMAGE PATH: ...]
     match = re.search(r"\[IMAGE PATH:\s*(.*?)\]", user_query)
     if match:
         path = match.group(1).strip()
         user_query = user_query.replace(match.group(0), "").strip()
-        if os.path.exists(path) and VISION_ENABLED:
-            with open(path, "rb") as f:
-                image_base64 = base64.b64encode(f.read()).decode("utf-8")
-        elif not VISION_ENABLED:
-            user_query += "\n[SYSTEM: Image shared but Vision disabled.]"
+        if os.path.exists(path) and vision_supported:
+            try:
+                mime_type, _ = mimetypes.guess_type(path)
+                mime_type = mime_type or "image/png"
+                with open(path, "rb") as f:
+                    b64_data = base64.b64encode(f.read()).decode("utf-8")
+                image_parts.append({
+                    "type": "image_url",
+                    "image_url": {"url": f"data:{mime_type};base64,{b64_data}"}
+                })
+            except OSError as e:
+                logger.warning(f"Failed to read legacy image path {path}: {e}")
+        elif not vision_supported:
+            non_image_notes.append("[SYSTEM: Image shared but Vision disabled.]")
 
-    if image_base64:
-        clean_query = user_query.replace("Regarding this screenshot:", "").strip()
-        if not clean_query:
-            final_text = "Please describe the attached image in detail."
+    clean_query = user_query.replace("Regarding this screenshot:", "").strip()
+    if non_image_notes:
+        if clean_query:
+            clean_query = clean_query + "\n\n" + "\n".join(non_image_notes)
         else:
-            final_text = f"Regarding this attached image: {clean_query}"
+            clean_query = "\n".join(non_image_notes)
 
-        return [
-            {"type": "text", "text": final_text},
-            {
-                "type": "image_url",
-                "image_url": {"url": f"data:{mime_type};base64,{image_base64}"},
-            },
-        ]
-    return user_query
+    if image_parts:
+        final_text = clean_query if clean_query else "Please analyze the attached image(s) in detail."
+        content_payload = [{"type": "text", "text": final_text}]
+        content_payload.extend(image_parts)
+        return content_payload
+
+    return clean_query if clean_query else user_query
 
 
 ## QTHREADS
@@ -199,6 +244,8 @@ class Backend(QObject):
     ttsStateChanged = pyqtSignal(bool)
     requireApproval = pyqtSignal(str)
     clearApproval = pyqtSignal()
+    pendingAttachmentsChanged = pyqtSignal(list)
+    visionSupportedChanged = pyqtSignal(bool)
 
     def __init__(self, initial_query, launch_mode):
         super().__init__()
@@ -207,6 +254,7 @@ class Backend(QObject):
         self.is_recording = False
         self.rec_process = None
         self.messages = []
+        self._pending_attachments = []
         props.set_voice_mode(self.is_voice_mode)
         props.set_tts_enabled(self.tts_enabled)
 
@@ -231,6 +279,7 @@ class Backend(QObject):
             get_active_role=lambda: props.active_role,
             set_active_role=self._set_active_role,
             get_mcp_status=lambda: props.get_mcp_status(),
+            is_vision_supported=lambda: self.is_vision_supported,
         )
 
         self.load_history()
@@ -247,6 +296,11 @@ class Backend(QObject):
 
     def _set_active_model_key(self, key: str) -> None:
         props.set_active_model_key(key)
+        self.visionSupportedChanged.emit(self.is_vision_supported)
+
+    @property
+    def is_vision_supported(self) -> bool:
+        return model_catalog_manager.is_vision_supported(self.active_model_key)
 
     @property
     def active_model_key(self) -> str:
@@ -287,6 +341,8 @@ class Backend(QObject):
         self.availableModelsChanged.emit(self.get_models_list())
         self.voiceStateChanged.emit(self.is_recording or self.is_voice_mode)
         self.ttsStateChanged.emit(self.tts_enabled)
+        self.visionSupportedChanged.emit(self.is_vision_supported)
+        self.pendingAttachmentsChanged.emit(list(self._pending_attachments))
         if self.is_voice_mode:
             self.statusChanged.emit("󰍬 Voice Mode Active", "#7fd962")
         for msg in self.messages:
@@ -312,6 +368,8 @@ class Backend(QObject):
             "- CRITICAL RULE FOR TIME & WEB SEARCH: When answering questions about current events, recent news, "
             "or relative dates (e.g. 'hoy', 'ayer', 'esta semana'), you MUST use the exact date obtained from "
             "`get_current_time` to frame your search queries and final report. NEVER revert to pre-training cutoff dates or assume past years.\n"
+            "- CRITICAL RULE FOR IMAGES & ATTACHMENTS: When an image is attached to the conversation, inspect and analyze its visual content "
+            "directly to answer the user's inquiry.\n"
             "- Keep answers concise, natural, and conversational."
         )
 
@@ -343,6 +401,7 @@ class Backend(QObject):
     def reset_session(self):
         """Reset conversation context and clear screen."""
         self.interrupt_ai()
+        self.clearPendingAttachments()
         self.messages = [{"role": "system", "content": self._build_system_prompt()}]
         if os.path.exists(props.history_file):
             try:
@@ -374,7 +433,27 @@ class Backend(QObject):
     @pyqtSlot()
     def save_history(self):
         tail = [m for m in self.messages if m.get("role") != "system"]
-        history_to_save = [self.messages[0]] + tail[-8:]
+        history_to_save = []
+        for m in [self.messages[0]] + tail[-8:]:
+            # If the user prompt is a multimodal list with base64 data, sanitize it for history storage
+            if isinstance(m.get("content"), list):
+                sanitized_parts = []
+                for part in m["content"]:
+                    if isinstance(part, dict) and part.get("type") == "image_url":
+                        sanitized_parts.append({
+                            "type": "text",
+                            "text": "[Image attachment ingested]"
+                        })
+                    else:
+                        sanitized_parts.append(part)
+                # Combine into single text if appropriate or keep list
+                history_to_save.append({
+                    **m,
+                    "content": " ".join([p.get("text", "") for p in sanitized_parts if p.get("type") == "text"]).strip()
+                })
+            else:
+                history_to_save.append(m)
+
         with open(props.history_file, "w") as f:
             json.dump(history_to_save, f)
 
@@ -440,16 +519,50 @@ class Backend(QObject):
                 if hasattr(self, "tray_manager") and self.tray_manager:
                     self.tray_manager.toggle_window()
 
+    @pyqtSlot()
+    def selectFilesDialog(self):
+        """Open native system file picker to attach one or multiple files."""
+        parent_widget = None
+        if hasattr(self, "tray_manager") and hasattr(self.tray_manager, "window"):
+            parent_widget = None
+        files, _ = QFileDialog.getOpenFileNames(
+            parent_widget,
+            "Seleccionar archivos para adjuntar",
+            os.path.expanduser("~"),
+            "Todos los archivos (*)"
+        )
+        if files:
+            for f in files:
+                if f not in self._pending_attachments:
+                    self._pending_attachments.append(f)
+            self.pendingAttachmentsChanged.emit(list(self._pending_attachments))
+
+    @pyqtSlot(str)
+    def removeAttachment(self, file_path):
+        """Remove a single attached file by path."""
+        if file_path in self._pending_attachments:
+            self._pending_attachments.remove(file_path)
+            self.pendingAttachmentsChanged.emit(list(self._pending_attachments))
+
+    @pyqtSlot()
+    def clearPendingAttachments(self):
+        """Clear all pending attached files."""
+        if self._pending_attachments:
+            self._pending_attachments.clear()
+            self.pendingAttachmentsChanged.emit([])
+
     @pyqtSlot(str)
     def processInput(self, text):
         clean_cmd = text.strip()
-        if self.command_registry.dispatch(clean_cmd, self.command_context):
+        if not self._pending_attachments and self.command_registry.dispatch(clean_cmd, self.command_context):
             return
 
         self.interrupt_ai()
         self.is_voice_mode = False
         self.statusChanged.emit("Idle", "#828c99")
-        self.submit_query(text)
+        attachments = list(self._pending_attachments)
+        self.clearPendingAttachments()
+        self.submit_query(text, attachments=attachments)
 
     @pyqtSlot()
     def stopAIOperation(self):
@@ -705,7 +818,7 @@ class Backend(QObject):
         self.inputStateChanged.emit(True)
         self.stopButtonStateChanged.emit(False)
 
-    def submit_query(self, query):
+    def submit_query(self, query, attachments=None):
         self._input_enabled = False
         self.inputStateChanged.emit(False)
         self.stopButtonStateChanged.emit(True)
@@ -713,9 +826,19 @@ class Backend(QObject):
             self.statusChanged.emit("󰘳 Routing...", "#ffb454")
         else:
             self.statusChanged.emit("󰟷 Thinking...", "#59c2ff")
-        self.messageAdded.emit("user", query)
 
-        content = process_prompt(query)
+        # Visual user message with attachment badges if present
+        display_query = query.strip()
+        if attachments:
+            att_badges = " ".join([f"`󰏫 {os.path.basename(a)}`" for a in attachments])
+            display_query = f"{att_badges}\n\n{display_query}" if display_query else att_badges
+        self.messageAdded.emit("user", display_query)
+
+        content = process_prompt(
+            query,
+            attached_files=attachments,
+            vision_supported=self.is_vision_supported
+        )
         self.messages.append({"role": "user", "content": content})
 
         if hasattr(self, "ai_thread") and self.ai_thread is not None:

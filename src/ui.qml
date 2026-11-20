@@ -25,11 +25,16 @@ ApplicationWindow {
     property bool userScrolledUp: false
     property bool isVoiceActive: false
     property bool isTtsActive: false
+    property bool isVisionSupported: true
     readonly property string monoFont: "JetBrainsMono Nerd Font Mono"
     readonly property int systemFontSize: window.font.pixelSize > 0 ? window.font.pixelSize : (window.font.pointSize > 0 ? Math.round(window.font.pointSize * 1.33) : 14)
 
     ListModel {
         id: modelsModel
+    }
+
+    ListModel {
+        id: attachmentsModel
     }
 
     Component.onCompleted: {
@@ -106,6 +111,20 @@ ApplicationWindow {
             chatModel.clear();
             activeAiIndex = -1;
             userScrolledUp = false;
+        }
+        function onVisionSupportedChanged(supported) {
+            isVisionSupported = supported;
+        }
+        function onPendingAttachmentsChanged(filesList) {
+            attachmentsModel.clear();
+            for (var i = 0; i < filesList.length; i++) {
+                var fPath = filesList[i];
+                var fName = fPath.split("/").pop();
+                attachmentsModel.append({
+                    "filePath": fPath,
+                    "fileName": fName
+                });
+            }
         }
     }
 
@@ -323,6 +342,99 @@ ApplicationWindow {
             }
         }
 
+        // Attachments Preview Bar (Chips)
+        RowLayout {
+            id: attachmentsBar
+            visible: attachmentsModel.count > 0
+            Layout.fillWidth: true
+            spacing: 8
+
+            ScrollView {
+                Layout.fillWidth: true
+                Layout.preferredHeight: 36
+                clip: true
+                ScrollBar.horizontal.policy: ScrollBar.AsNeeded
+                ScrollBar.vertical.policy: ScrollBar.AlwaysOff
+
+                Row {
+                    spacing: 8
+                    Repeater {
+                        model: attachmentsModel
+                        delegate: Rectangle {
+                            height: 28
+                            radius: 14
+                            color: "#1a2332"
+                            border.color: isVisionSupported ? "#59c2ff" : "#e5b454"
+                            border.width: 1
+                            implicitWidth: chipRow.implicitWidth + 18
+
+                            Row {
+                                id: chipRow
+                                anchors.centerIn: parent
+                                spacing: 6
+
+                                Text {
+                                    text: "󰏫"
+                                    color: isVisionSupported ? "#59c2ff" : "#e5b454"
+                                    font.family: window.monoFont
+                                    font.pixelSize: 12
+                                    anchors.verticalCenter: parent.verticalCenter
+                                }
+
+                                Text {
+                                    text: model.fileName
+                                    color: "#e6e1cf"
+                                    font.family: window.monoFont
+                                    font.pixelSize: 11
+                                    elide: Text.ElideMiddle
+                                    maximumLineCount: 1
+                                    anchors.verticalCenter: parent.verticalCenter
+                                }
+
+                                Text {
+                                    text: "✕"
+                                    color: chipCloseMouse.containsMouse ? "#f07178" : "#828c99"
+                                    font.family: window.monoFont
+                                    font.pixelSize: 11
+                                    font.bold: true
+                                    anchors.verticalCenter: parent.verticalCenter
+
+                                    MouseArea {
+                                        id: chipCloseMouse
+                                        anchors.fill: parent
+                                        hoverEnabled: true
+                                        cursorShape: Qt.PointingHandCursor
+                                        onClicked: backend.removeAttachment(model.filePath)
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+
+            Button {
+                text: "Limpiar"
+                Layout.preferredHeight: 28
+                visible: attachmentsModel.count > 1
+                background: Rectangle {
+                    color: parent.hovered ? "#341a22" : "transparent"
+                    radius: 8
+                    border.color: parent.hovered ? "#f07178" : "#283446"
+                    border.width: 1
+                }
+                contentItem: Text {
+                    text: parent.text
+                    color: parent.hovered ? "#f07178" : "#828c99"
+                    font.family: window.monoFont
+                    font.pixelSize: 10
+                    horizontalAlignment: Text.AlignHCenter
+                    verticalAlignment: Text.AlignVCenter
+                }
+                onClicked: backend.clearPendingAttachments()
+            }
+        }
+
         // Bottom Controls Bar
         RowLayout {
             Layout.fillWidth: true
@@ -351,6 +463,31 @@ ApplicationWindow {
                     verticalAlignment: Text.AlignVCenter
                 }
                 onClicked: backend.show_help()
+            }
+
+            // Attach File Button (+)
+            Button {
+                id: attachButton
+                text: "󰐕"
+                Layout.preferredWidth: 54
+                Layout.preferredHeight: 54
+                ToolTip.visible: hovered
+                ToolTip.text: isVisionSupported ? "Adjuntar archivo o imagen..." : "Adjuntar archivo (Aviso: el modelo activo no soporta visión multimodal)"
+                background: Rectangle {
+                    color: parent.down ? "#283446" : (parent.hovered ? "#222a38" : (attachmentsModel.count > 0 ? "#1c2636" : "#181d28"))
+                    radius: 14
+                    border.color: attachmentsModel.count > 0 ? "#59c2ff" : (parent.hovered ? "#59c2ff" : "#283040")
+                    border.width: 1
+                }
+                contentItem: Text {
+                    text: parent.text
+                    color: attachmentsModel.count > 0 ? "#59c2ff" : (parent.hovered ? "#59c2ff" : "#828c99")
+                    font.family: window.monoFont
+                    font.pixelSize: 22
+                    horizontalAlignment: Text.AlignHCenter
+                    verticalAlignment: Text.AlignVCenter
+                }
+                onClicked: backend.selectFilesDialog()
             }
 
             // TTS Voice Toggle Button
