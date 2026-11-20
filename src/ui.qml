@@ -697,7 +697,7 @@ ApplicationWindow {
                             }
 
                             Text {
-                                text: "About (v1.1.1)"
+                                text: "About (v1.2.0)"
                                 color: "#828c99"
                                 font.family: window.monoFont
                                 font.pixelSize: 11

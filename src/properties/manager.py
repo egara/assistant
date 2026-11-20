@@ -39,7 +39,7 @@ class PropertiesManager:
         if getattr(self, "_initialized", False):
             return
 
-        self.version = "1.1.1"
+        self.version = "1.2.0"
         self._listeners: Dict[str, List[Callable[[Any], None]]] = {}
 
         # 1. Base Directories & XDG Paths

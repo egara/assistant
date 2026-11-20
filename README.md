@@ -217,12 +217,20 @@ windowrulev2 = animation slide, title:^(Assistant AI)$
 # ASSISTANT KEYBINDS
 # ==========================================
 
-# 1. AUTO MODE (VAD: Automatically stops recording when you pause talking)
-bind = SUPER, A, exec, assistant --voice
+# 1. WINDOW TOGGLE & HEADLESS VOICE MODE (Short / Long Press)
+# Standard hyprland.conf syntax (using 'o' flag for long press):
+bind = SUPER, A, exec, assistant
+bindo = SUPER, A, exec, assistant --voice
+
+# Lua syntax (hyprland.lua):
+# hl.bind("SUPER + A", hl.dsp.exec_cmd("assistant"), { release = true, description = "Toggle Assistant AI Window" })
+# hl.bind("SUPER + A", hl.dsp.exec_cmd("assistant --voice"), { long_press = true, description = "Headless Voice Mode" })
+
+# 2. CONTEXT AWARE MODES
 bind = SUPER ALT, A, exec, assistant --clipboard --voice
 bind = SUPER CTRL, A, exec, assistant --screen --voice
 
-# 2. MANUAL TOGGLE MODE (Push-to-Talk: Perfect for loud environments. Press to start, press to stop)
+# 3. MANUAL TOGGLE MODE (Push-to-Talk: Perfect for loud environments. Press to start, press to stop)
 bind = SUPER SHIFT, A, exec, assistant --voice --toggle
 bind = SUPER SHIFT ALT, A, exec, assistant --clipboard --toggle
 bind = SUPER SHIFT CTRL, A, exec, assistant --screen --toggle
