@@ -465,31 +465,6 @@ ApplicationWindow {
                 onClicked: backend.show_help()
             }
 
-            // Attach File Button (+)
-            Button {
-                id: attachButton
-                text: "󰐕"
-                Layout.preferredWidth: 54
-                Layout.preferredHeight: 54
-                ToolTip.visible: hovered
-                ToolTip.text: isVisionSupported ? "Adjuntar archivo o imagen..." : "Adjuntar archivo (Aviso: el modelo activo no soporta visión multimodal)"
-                background: Rectangle {
-                    color: parent.down ? "#283446" : (parent.hovered ? "#222a38" : (attachmentsModel.count > 0 ? "#1c2636" : "#181d28"))
-                    radius: 14
-                    border.color: attachmentsModel.count > 0 ? "#59c2ff" : (parent.hovered ? "#59c2ff" : "#283040")
-                    border.width: 1
-                }
-                contentItem: Text {
-                    text: parent.text
-                    color: attachmentsModel.count > 0 ? "#59c2ff" : (parent.hovered ? "#59c2ff" : "#828c99")
-                    font.family: window.monoFont
-                    font.pixelSize: 22
-                    horizontalAlignment: Text.AlignHCenter
-                    verticalAlignment: Text.AlignVCenter
-                }
-                onClicked: backend.selectFilesDialog()
-            }
-
             // TTS Voice Toggle Button
             Button {
                 id: ttsButton
@@ -515,56 +490,89 @@ ApplicationWindow {
                 onClicked: backend.toggleTTS()
             }
 
-            // Text Input Box Container
-            ScrollView {
-                id: inputScrollView
+            // Text Input Box Container with integrated '+' Attach Button
+            Rectangle {
+                id: inputContainer
                 Layout.fillWidth: true
                 Layout.preferredHeight: 54
-                clip: true
-                ScrollBar.vertical.policy: ScrollBar.AsNeeded
-                background: Rectangle {
-                    color: "#181d28"
-                    radius: 14
-                    border.color: inputBox.activeFocus ? "#59c2ff" : "#283040"
-                    border.width: inputBox.activeFocus ? 1.5 : 1
-                }
+                color: "#181d28"
+                radius: 14
+                border.color: inputBox.activeFocus ? "#59c2ff" : "#283040"
+                border.width: inputBox.activeFocus ? 1.5 : 1
 
-                TextArea {
-                    id: inputBox
-                    width: inputScrollView.availableWidth
-                    placeholderText: "Escribe un mensaje o pulsa el micro..."
-                    placeholderTextColor: "#4f5a6b"
-                    color: "#e6e1cf"
-                    font.family: window.monoFont
-                    font.pixelSize: window.systemFontSize
-                    wrapMode: TextArea.Wrap
-                    verticalAlignment: lineCount <= 1 ? TextEdit.AlignVCenter : TextEdit.AlignTop
-                    leftPadding: 12
-                    rightPadding: 12
-                    topPadding: lineCount <= 1 ? 6 : 8
-                    bottomPadding: lineCount <= 1 ? 6 : 8
+                RowLayout {
+                    anchors.fill: parent
+                    spacing: 0
 
-                    onCursorRectangleChanged: {
-                        var flick = inputScrollView.contentItem;
-                        if (!flick) return;
-                        if (cursorRectangle.y < flick.contentY) {
-                            flick.contentY = Math.max(0, cursorRectangle.y - topPadding);
-                        } else if (cursorRectangle.y + cursorRectangle.height > flick.contentY + flick.height) {
-                            flick.contentY = Math.min(flick.contentHeight - flick.height, cursorRectangle.y + cursorRectangle.height + bottomPadding - flick.height);
+                    // Integrated Attach File Button (+)
+                    Button {
+                        id: attachButton
+                        text: "󰐕"
+                        Layout.preferredWidth: 42
+                        Layout.fillHeight: true
+                        ToolTip.visible: hovered
+                        ToolTip.text: isVisionSupported ? "Adjuntar archivo o imagen..." : "Adjuntar archivo (Aviso: el modelo activo no soporta visión multimodal)"
+                        background: Rectangle {
+                            color: "transparent"
                         }
+                        contentItem: Text {
+                            text: parent.text
+                            color: attachmentsModel.count > 0 ? "#59c2ff" : (parent.hovered ? "#59c2ff" : "#606b7a")
+                            font.family: window.monoFont
+                            font.pixelSize: 20
+                            horizontalAlignment: Text.AlignHCenter
+                            verticalAlignment: Text.AlignVCenter
+                        }
+                        onClicked: backend.selectFilesDialog()
                     }
 
-                    Keys.onPressed: event => {
-                        if (event.key === Qt.Key_Return && !event.modifiers) {
-                            var txt = text.trim();
-                            if (txt !== "") {
-                                if (txt.toLowerCase() === "v")
-                                    backend.toggleVoiceRecording();
-                                else
-                                    backend.processInput(txt);
-                                text = "";
+                    // Text Input ScrollView
+                    ScrollView {
+                        id: inputScrollView
+                        Layout.fillWidth: true
+                        Layout.fillHeight: true
+                        clip: true
+                        ScrollBar.vertical.policy: ScrollBar.AsNeeded
+                        background: null
+
+                        TextArea {
+                            id: inputBox
+                            width: inputScrollView.availableWidth
+                            placeholderText: "Escribe un mensaje o pulsa el micro..."
+                            placeholderTextColor: "#4f5a6b"
+                            color: "#e6e1cf"
+                            font.family: window.monoFont
+                            font.pixelSize: window.systemFontSize
+                            wrapMode: TextArea.Wrap
+                            verticalAlignment: lineCount <= 1 ? TextEdit.AlignVCenter : TextEdit.AlignTop
+                            leftPadding: 4
+                            rightPadding: 12
+                            topPadding: lineCount <= 1 ? 6 : 8
+                            bottomPadding: lineCount <= 1 ? 6 : 8
+
+                            onCursorRectangleChanged: {
+                                var flick = inputScrollView.contentItem;
+                                if (!flick) return;
+                                if (cursorRectangle.y < flick.contentY) {
+                                    flick.contentY = Math.max(0, cursorRectangle.y - topPadding);
+                                } else if (cursorRectangle.y + cursorRectangle.height > flick.contentY + flick.height) {
+                                    flick.contentY = Math.min(flick.contentHeight - flick.height, cursorRectangle.y + cursorRectangle.height + bottomPadding - flick.height);
+                                }
                             }
-                            event.accepted = true;
+
+                            Keys.onPressed: event => {
+                                if (event.key === Qt.Key_Return && !event.modifiers) {
+                                    var txt = text.trim();
+                                    if (txt !== "") {
+                                        if (txt.toLowerCase() === "v")
+                                            backend.toggleVoiceRecording();
+                                        else
+                                            backend.processInput(txt);
+                                        text = "";
+                                    }
+                                    event.accepted = true;
+                                }
+                            }
                         }
                     }
                 }

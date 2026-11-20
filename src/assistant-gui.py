@@ -521,16 +521,37 @@ class Backend(QObject):
 
     @pyqtSlot()
     def selectFilesDialog(self):
-        """Open native system file picker to attach one or multiple files."""
-        parent_widget = None
-        if hasattr(self, "tray_manager") and hasattr(self.tray_manager, "window"):
-            parent_widget = None
-        files, _ = QFileDialog.getOpenFileNames(
-            parent_widget,
-            "Seleccionar archivos para adjuntar",
-            os.path.expanduser("~"),
-            "Todos los archivos (*)"
-        )
+        """Open system file picker to attach one or multiple files."""
+        # Check if environment requires DontUseNativeDialog to prevent GLib/GTK schema aborts
+        saved_theme = os.environ.get("QT_QPA_PLATFORMTHEME")
+        saved_style = os.environ.get("QT_STYLE_OVERRIDE")
+        options = QFileDialog.Option(0)
+        try:
+            # Under Linux desktops without gsettings-desktop-schemas (e.g. standalone Hyprland),
+            # the GTK platform theme crashes GLib with SIGABRT (134) when opening GtkFileChooser.
+            # Stripping the GTK platform theme for QFileDialog ensures Qt's robust built-in dialog is used.
+            if saved_theme:
+                os.environ.pop("QT_QPA_PLATFORMTHEME", None)
+            if saved_style:
+                os.environ.pop("QT_STYLE_OVERRIDE", None)
+            options = QFileDialog.Option.DontUseNativeDialog
+
+            files, _ = QFileDialog.getOpenFileNames(
+                None,
+                "Seleccionar archivos para adjuntar",
+                os.path.expanduser("~"),
+                "Todos los archivos (*)",
+                options=options
+            )
+        except Exception as e:
+            logger.error(f"Error opening file dialog: {e}")
+            files = []
+        finally:
+            if saved_theme is not None:
+                os.environ["QT_QPA_PLATFORMTHEME"] = saved_theme
+            if saved_style is not None:
+                os.environ["QT_STYLE_OVERRIDE"] = saved_style
+
         if files:
             for f in files:
                 if f not in self._pending_attachments:
