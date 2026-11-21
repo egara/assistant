@@ -57,7 +57,12 @@ TOOL_DEFINITIONS = [
         "type": "function",
         "function": {
             "name": "stop_surveillance",
-            "description": "Stop active background webcam surveillance mode.",
+            "description": (
+                "Stop, halt, disable, or cancel active background webcam surveillance mode. "
+                "MUST be called immediately whenever the user asks to stop surveillance, turn off the camera watch, "
+                "or cancel monitoring (e.g. 'para el modo vigilancia', 'para la vigilancia', 'detén la vigilancia', "
+                "'cancela la vigilancia', 'desactiva vigilancia', 'para la cámara', 'deja de vigilar', 'apaga la vigilancia')."
+            ),
             "parameters": {
                 "type": "object",
                 "properties": {},
@@ -68,7 +73,12 @@ TOOL_DEFINITIONS = [
         "type": "function",
         "function": {
             "name": "get_surveillance_status",
-            "description": "Get current status, condition, and statistics of webcam surveillance.",
+            "description": (
+                "Query current status, condition, and statistics of webcam surveillance. "
+                "Only use when the user asks questions about whether surveillance is running or its status "
+                "(e.g. '¿sigue activa la vigilancia?', 'qué estás vigilando', 'estado de la vigilancia'). "
+                "Do NOT call this when the user asks to stop, halt, or cancel surveillance."
+            ),
             "parameters": {
                 "type": "object",
                 "properties": {},
