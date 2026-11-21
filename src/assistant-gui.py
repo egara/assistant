@@ -76,6 +76,8 @@ from tools import (
     configure_hyprland,
     get_cinema_showtimes,
     CINEMA_TOOLS,
+    take_screenshot,
+    SCREENSHOT_TOOLS,
 )
 from routing import DecisionRouter
 from commands import create_default_registry, CommandContext
@@ -145,6 +147,7 @@ tools = (
     TIME_TOOLS
     + WEATHER_TOOLS
     + CINEMA_TOOLS
+    + SCREENSHOT_TOOLS
     + WEB_TOOLS
     + OBSIDIAN_TOOLS
     + OS_TOOLS
@@ -320,6 +323,17 @@ class Backend(QObject):
     def is_vision_supported(self) -> bool:
         return model_catalog_manager.is_vision_supported(self.active_model_key)
 
+    def hide_window(self):
+        """Temporarily hide window for screen operations if window is currently visible."""
+        if hasattr(self, "tray_manager") and self.tray_manager and self.tray_manager.window:
+            if self.tray_manager.window.isVisible():
+                self.tray_manager.window.hide()
+
+    def show_window(self):
+        """Restore window visibility after screen operations."""
+        if hasattr(self, "tray_manager") and self.tray_manager:
+            self.tray_manager.show_window()
+
     @property
     def active_model_key(self) -> str:
         return props.active_model_key
@@ -386,7 +400,9 @@ class Backend(QObject):
             "- CRITICAL RULE FOR TIME & WEB SEARCH: When answering questions about current events, recent news, "
             "or relative dates (e.g. 'hoy', 'ayer', 'esta semana'), you MUST use the exact date obtained from "
             "`get_current_time` to frame your search queries and final report. NEVER revert to pre-training cutoff dates or assume past years.\n"
-            "- CRITICAL RULE FOR IMAGES & ATTACHMENTS: When an image is attached to the conversation, inspect and analyze its visual content "
+            "- CRITICAL RULE FOR SCREEN & VISUAL ANALYSIS: When the user asks to look at, inspect, review, or analyze something on screen or an error currently displayed (e.g., 'mira la pantalla', 'haz una captura', 'mira este error que sale en pantalla', 'qué tengo abierto'), "
+            "you MUST call `take_screenshot(target='fullscreen'|'active_window')`. The assistant window will automatically hide and restore during the capture.\n"
+            "- CRITICAL RULE FOR IMAGES & ATTACHMENTS: When an image is attached to the conversation or provided by a tool, inspect and analyze its visual content "
             "directly to answer the user's inquiry.\n"
             "- Keep answers concise, natural, and conversational."
         )
@@ -931,6 +947,8 @@ class Backend(QObject):
             mcp_manager=mcp_manager,
             command_intents=COMMAND_INTENTS,
             resolve_tools_fn=resolve_tools_for_query,
+            hide_window_callback=self.hide_window,
+            show_window_callback=self.show_window,
         )
         self.ai_thread.status_signal.connect(self.statusChanged.emit)
         self.ai_thread.active_model_signal.connect(self.activeModelChanged.emit)

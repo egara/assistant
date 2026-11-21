@@ -20,6 +20,7 @@ from tools.time import get_current_time
 from tools.weather import get_weather
 from tools.web import perform_web_search
 from tools.cinema import get_cinema_showtimes
+from tools.screenshot import take_screenshot
 
 
 def dispatch_tool(
@@ -28,7 +29,9 @@ def dispatch_tool(
     execute_command_safe: Optional[Callable[[str], str]] = None,
     mcp_manager: Optional[Any] = None,
     command_intents: Optional[Dict[str, list]] = None,
-) -> Tuple[str, bool]:
+    hide_window_callback: Optional[Callable[[], None]] = None,
+    show_window_callback: Optional[Callable[[], None]] = None,
+) -> Tuple[Any, bool]:
     """Execute a single tool call by name.
 
     Returns a tuple ``(results_text, is_silent)``. ``is_silent`` marks desktop
@@ -97,6 +100,20 @@ def dispatch_tool(
         no_error = "error" not in results.lower()
         silent = is_app_launch or (is_action and no_error)
         return results, silent
+    if tool_name == "take_screenshot":
+        target = args.get("target", "fullscreen")
+        status_text, file_path, b64_data = take_screenshot(
+            target=target,
+            hide_window_callback=hide_window_callback,
+            show_window_callback=show_window_callback,
+        )
+        if b64_data:
+            return {
+                "text": status_text,
+                "file_path": file_path,
+                "image_b64": b64_data,
+            }, False
+        return status_text, False
     if mcp_manager is not None and hasattr(mcp_manager, "tools") and tool_name in mcp_manager.tools:
         return mcp_manager.call_tool(tool_name, args), False
 

@@ -190,6 +190,10 @@
                       pkgs.whisper-cpp
                       pkgs.wireplumber
                       pkgs.wmctrl
+                      pkgs.grim
+                      pkgs.maim
+                      pkgs.xdotool
+                      pkgs.jq
                       pythonEnv
                     ]
                   }

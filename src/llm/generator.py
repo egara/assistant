@@ -93,6 +93,8 @@ class AIGeneratorThread(QThread):
         mcp_manager: Optional[Any] = None,
         command_intents: Optional[Dict[str, list]] = None,
         resolve_tools_fn: Optional[Callable[..., Tuple[List[Dict[str, Any]], Optional[Dict[str, Any]]]]] = None,
+        hide_window_callback: Optional[Callable[[], None]] = None,
+        show_window_callback: Optional[Callable[[], None]] = None,
     ):
         super().__init__()
         self.messages = messages
@@ -100,6 +102,8 @@ class AIGeneratorThread(QThread):
         self.mcp_manager = mcp_manager
         self.command_intents = command_intents or {}
         self.resolve_tools_fn = resolve_tools_fn
+        self.hide_window_callback = hide_window_callback
+        self.show_window_callback = show_window_callback
         self.approval_event = threading.Event()
         self.approval_result = False
         self._is_stopped = False
@@ -406,15 +410,28 @@ class AIGeneratorThread(QThread):
                         execute_command_safe=self.execute_command_safe,
                         mcp_manager=self.mcp_manager,
                         command_intents=self.command_intents,
+                        hide_window_callback=self.hide_window_callback,
+                        show_window_callback=self.show_window_callback,
                     )
                     if not tool_silent:
                         all_tools_silent = False
 
-                    tool_results_list.append({
-                        "call_id": tool_call["id"],
-                        "name": tool_name,
-                        "content": str(results),
-                    })
+                    # Check if results contain visual image payload (e.g. from take_screenshot)
+                    if isinstance(results, dict) and "image_b64" in results:
+                        text_content = results.get("text", "Screenshot captured.")
+                        b64_data = results["image_b64"]
+                        tool_results_list.append({
+                            "call_id": tool_call["id"],
+                            "name": tool_name,
+                            "content": text_content,
+                            "image_b64": b64_data,
+                        })
+                    else:
+                        tool_results_list.append({
+                            "call_id": tool_call["id"],
+                            "name": tool_name,
+                            "content": str(results),
+                        })
 
                 if self._is_stopped:
                     self.finished_signal.emit("")
@@ -440,6 +457,24 @@ class AIGeneratorThread(QThread):
                         "name": res_item["name"],
                         "content": res_item["content"],
                     })
+                    # If this tool call produced an image (e.g. screenshot), inject multimodal user turn
+                    # so vision-capable models can inspect the pixels in the next round.
+                    if res_item.get("image_b64"):
+                        temp_messages.append({
+                            "role": "user",
+                            "content": [
+                                {
+                                    "type": "text",
+                                    "text": "Screenshot captured. Analyze the visual contents of this screenshot to fulfill the request.",
+                                },
+                                {
+                                    "type": "image_url",
+                                    "image_url": {
+                                        "url": f"data:image/png;base64,{res_item['image_b64']}"
+                                    },
+                                },
+                            ],
+                        })
 
             self.history_save_signal.emit()
             self.finished_signal.emit(full_content)
