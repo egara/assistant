@@ -39,8 +39,8 @@ TOOL_DEFINITIONS = [
                     },
                     "interval_seconds": {
                         "type": "integer",
-                        "default": 5,
-                        "description": "Interval between camera captures in seconds (minimum 3s, default 5s).",
+                        "default": 2,
+                        "description": "Interval between camera captures in seconds (minimum 1s, default 2s).",
                     },
                     "action": {
                         "type": "string",
@@ -145,7 +145,7 @@ class SurveillanceManager:
     def _init_state(self) -> None:
         self.is_active = False
         self.condition = ""
-        self.interval = 5
+        self.interval = 2
         self.action = "save_and_notify"
         self.device = "/dev/video0"
         self.thread: Optional[threading.Thread] = None
@@ -166,12 +166,18 @@ class SurveillanceManager:
         model_name: str,
         on_trigger_callback: Optional[Callable[[str, str], None]] = None,
         on_state_changed_callback: Optional[Callable[[bool], None]] = None,
+        default_interval: Optional[int] = None,
+        default_cooldown: Optional[float] = None,
     ) -> None:
-        """Register the vision client and notification callbacks."""
+        """Register the vision client, configuration defaults, and notification callbacks."""
         self.model_client = client
         self.model_name = model_name
         self.on_trigger_callback = on_trigger_callback
         self.on_state_changed_callback = on_state_changed_callback
+        if default_interval is not None:
+            self.interval = max(1, int(default_interval))
+        if default_cooldown is not None:
+            self.trigger_cooldown = max(1.0, float(default_cooldown))
 
     def start(
         self,
@@ -195,7 +201,7 @@ class SurveillanceManager:
             return "Error: No se encontró ffmpeg ni fswebcam para capturar imágenes de la webcam."
 
         self.condition = condition.strip()
-        self.interval = max(3, int(interval_seconds))
+        self.interval = max(1, int(interval_seconds if interval_seconds is not None else self.interval))
         self.action = action
         self.device = device
         self.frames_analyzed = 0
@@ -385,13 +391,14 @@ surveillance_manager = SurveillanceManager()
 
 def start_surveillance(
     condition: str,
-    interval_seconds: int = 5,
+    interval_seconds: Optional[int] = None,
     action: str = "save_and_notify",
 ) -> str:
     """Tool entrypoint: Start background webcam surveillance."""
+    interval = interval_seconds if interval_seconds is not None else surveillance_manager.interval
     return surveillance_manager.start(
         condition=condition,
-        interval_seconds=interval_seconds,
+        interval_seconds=interval,
         action=action,
     )
 

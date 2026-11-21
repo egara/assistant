@@ -449,6 +449,18 @@ Tool categories routed by the decision engine:
 * `cinema`: Cinema showtimes and movie listings from Tu Cine (`get_cinema_showtimes`).
 * `web_search`: Internet search via SearXNG MCP or DuckDuckGo (`web_search`).
 
+### 6. The `"surveillance"` Block (Autonomous Webcam Monitoring)
+Configures autonomous webcam surveillance intervals and cooldowns:
+* `"interval_seconds"` *(int)*: Interval between camera frame captures and vision checks in seconds (default: `2`).
+* `"trigger_cooldown_seconds"` *(float)*: Cooldown time in seconds between alert dispatches and saving snapshots when conditions remain active (default: `10.0`).
+
+```json
+"surveillance": {
+  "interval_seconds": 2,
+  "trigger_cooldown_seconds": 10.0
+}
+```
+
 ---
 
 ## Modern User Interface & Slash Commands

@@ -330,6 +330,8 @@ class Backend(QObject):
             model_name=model_name,
             on_trigger_callback=lambda desc, path: self.surveillanceTriggeredSignal.emit(desc, path),
             on_state_changed_callback=lambda active: self.surveillanceStateChangedSignal.emit(active),
+            default_interval=props.surveillance_interval,
+            default_cooldown=props.surveillance_cooldown,
         )
 
     def _set_active_role(self, role_id: str) -> bool:
@@ -462,7 +464,7 @@ class Backend(QObject):
             "- CRITICAL RULE FOR SCREEN & VISUAL ANALYSIS: When the user asks to look at, inspect, review, or analyze something on screen or an error currently displayed (e.g., 'mira la pantalla', 'haz una captura', 'mira este error que sale en pantalla', 'qué tengo abierto'), "
             "you MUST call `take_screenshot(target='fullscreen'|'active_window')`. The assistant window will automatically hide and restore during the capture.\n"
             "- CRITICAL RULE FOR WEBCAM SURVEILLANCE: When the user asks to activate surveillance mode or monitor the camera for something (e.g., 'ponte en modo vigilancia y avísame cuando veas a una persona', 'vigila la cámara si entra alguien', 'avísame si ves un gato', 'para la vigilancia'), "
-            "you MUST call `start_surveillance(condition='...', interval_seconds=5)` or `stop_surveillance()`. Do NOT pretend to monitor without calling the tool.\n"
+            f"you MUST call `start_surveillance(condition='...', interval_seconds={props.surveillance_interval})` or `stop_surveillance()`. Do NOT pretend to monitor without calling the tool.\n"
             "- CRITICAL RULE FOR IMAGES & ATTACHMENTS: When an image is attached to the conversation or provided by a tool, inspect and analyze its visual content "
             "directly to answer the user's inquiry.\n"
             "- Keep answers concise, natural, and conversational."

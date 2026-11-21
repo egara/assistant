@@ -267,6 +267,16 @@ class PropertiesManager:
         return self.get("decision_router", {})
 
     @property
+    def surveillance_interval(self) -> int:
+        """Configured default surveillance interval in seconds (default: 2)."""
+        return max(1, int(self.get("surveillance.interval_seconds", 2)))
+
+    @property
+    def surveillance_cooldown(self) -> float:
+        """Configured cooldown between surveillance trigger notifications in seconds (default: 10.0)."""
+        return max(1.0, float(self.get("surveillance.trigger_cooldown_seconds", 10.0)))
+
+    @property
     def history_duration_minutes(self) -> int:
         return int(self.get("llm.history_duration_minutes", 15))
 
