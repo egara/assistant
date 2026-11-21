@@ -26,6 +26,7 @@ ApplicationWindow {
     property bool isVoiceActive: false
     property bool isTtsActive: false
     property bool isVisionSupported: true
+    property bool isSurveillanceActive: false
     readonly property string monoFont: "JetBrainsMono Nerd Font Mono"
     readonly property int systemFontSize: window.font.pixelSize > 0 ? window.font.pixelSize : (window.font.pointSize > 0 ? Math.round(window.font.pointSize * 1.33) : 14)
 
@@ -57,6 +58,9 @@ ApplicationWindow {
         }
         function onTtsStateChanged(active) {
             isTtsActive = active;
+        }
+        function onSurveillanceActiveChanged(active) {
+            isSurveillanceActive = active;
         }
         function onStatusChanged(text, colorHex) {
             statusLabel.text = text;
@@ -142,8 +146,8 @@ ApplicationWindow {
             Layout.alignment: Qt.AlignHCenter
             height: 28
             radius: 14
-            color: "#181d28"
-            border.color: "#283040"
+            color: window.isSurveillanceActive ? "#2a151b" : "#181d28"
+            border.color: window.isSurveillanceActive ? "#ff5555" : "#283040"
             border.width: 1
             implicitWidth: statusLayout.implicitWidth + 24
 
@@ -166,6 +170,34 @@ ApplicationWindow {
                     color: "#828c99"
                     font.family: window.monoFont
                     font.pixelSize: 12
+                    font.bold: true
+                    Layout.alignment: Qt.AlignVCenter
+                }
+
+                // Surveillance blinking indicator dot
+                Rectangle {
+                    id: surveillanceDot
+                    visible: window.isSurveillanceActive
+                    width: 8
+                    height: 8
+                    radius: 4
+                    color: "#ff5555"
+                    Layout.alignment: Qt.AlignVCenter
+
+                    SequentialAnimation on opacity {
+                        running: window.isSurveillanceActive
+                        loops: Animation.Infinite
+                        PropertyAnimation { to: 0.2; duration: 600 }
+                        PropertyAnimation { to: 1.0; duration: 600 }
+                    }
+                }
+
+                Label {
+                    visible: window.isSurveillanceActive
+                    text: "REC"
+                    color: "#ff5555"
+                    font.family: window.monoFont
+                    font.pixelSize: 10
                     font.bold: true
                     Layout.alignment: Qt.AlignVCenter
                 }

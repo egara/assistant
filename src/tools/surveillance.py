@@ -158,17 +158,20 @@ class SurveillanceManager:
         self.model_client: Optional[Any] = None
         self.model_name: Optional[str] = None
         self.on_trigger_callback: Optional[Callable[[str, str], None]] = None
+        self.on_state_changed_callback: Optional[Callable[[bool], None]] = None
 
     def configure_vision_client(
         self,
         client: Any,
         model_name: str,
         on_trigger_callback: Optional[Callable[[str, str], None]] = None,
+        on_state_changed_callback: Optional[Callable[[bool], None]] = None,
     ) -> None:
         """Register the vision client and notification callbacks."""
         self.model_client = client
         self.model_name = model_name
         self.on_trigger_callback = on_trigger_callback
+        self.on_state_changed_callback = on_state_changed_callback
 
     def start(
         self,
@@ -205,6 +208,12 @@ class SurveillanceManager:
         self.thread = threading.Thread(target=self._run_loop, daemon=True)
         self.thread.start()
 
+        if self.on_state_changed_callback:
+            try:
+                self.on_state_changed_callback(True)
+            except Exception as e:
+                logger.warning(f"Failed to invoke on_state_changed_callback(True): {e}")
+
         logger.info(f"Surveillance started: condition='{self.condition}', interval={self.interval}s")
         return (
             f"Modo vigilancia activado correctamente. "
@@ -219,6 +228,13 @@ class SurveillanceManager:
 
         self.stop_event.set()
         self.is_active = False
+
+        if self.on_state_changed_callback:
+            try:
+                self.on_state_changed_callback(False)
+            except Exception as e:
+                logger.warning(f"Failed to invoke on_state_changed_callback(False): {e}")
+
         duration_sec = int(time.time() - self.start_time) if self.start_time else 0
         msg = (
             f"Modo vigilancia detenido. Estuvo activo {duration_sec}s, "

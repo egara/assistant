@@ -273,6 +273,9 @@ class Backend(QObject):
     clearApproval = pyqtSignal()
     pendingAttachmentsChanged = pyqtSignal(list)
     visionSupportedChanged = pyqtSignal(bool)
+    surveillanceActiveChanged = pyqtSignal(bool)
+    surveillanceTriggeredSignal = pyqtSignal(str, str)
+    surveillanceStateChangedSignal = pyqtSignal(bool)
 
     def __init__(self, initial_query, launch_mode):
         super().__init__()
@@ -311,6 +314,10 @@ class Backend(QObject):
 
         self.load_history()
 
+        # Connect internal Qt signals for thread-safe cross-thread surveillance notifications
+        self.surveillanceTriggeredSignal.connect(self.on_surveillance_triggered)
+        self.surveillanceStateChangedSignal.connect(self.on_surveillance_state_changed)
+
         # Configure Surveillance Manager with the active model client & notification callback
         self._update_surveillance_client()
 
@@ -321,13 +328,8 @@ class Backend(QObject):
         surveillance_manager.configure_vision_client(
             client=client,
             model_name=model_name,
-            on_trigger_callback=lambda desc, path: QMetaObject.invokeMethod(
-                self,
-                "on_surveillance_triggered",
-                Qt.ConnectionType.QueuedConnection,
-                desc,
-                path,
-            ),
+            on_trigger_callback=lambda desc, path: self.surveillanceTriggeredSignal.emit(desc, path),
+            on_state_changed_callback=lambda active: self.surveillanceStateChangedSignal.emit(active),
         )
 
     def _set_active_role(self, role_id: str) -> bool:
@@ -384,6 +386,12 @@ class Backend(QObject):
         if self.tts_enabled:
             self.play_audio(f"Alerta de vigilancia: {description}")
 
+    @pyqtSlot(bool)
+    def on_surveillance_state_changed(self, active: bool):
+        """Handle surveillance active state change and notify QML UI."""
+        logger.info(f"Surveillance active state changed to: {active}")
+        self.surveillanceActiveChanged.emit(active)
+
     @property
     def active_model_key(self) -> str:
         return props.active_model_key
@@ -424,6 +432,7 @@ class Backend(QObject):
         self.voiceStateChanged.emit(self.is_recording or self.is_voice_mode)
         self.ttsStateChanged.emit(self.tts_enabled)
         self.visionSupportedChanged.emit(self.is_vision_supported)
+        self.surveillanceActiveChanged.emit(surveillance_manager.is_active)
         self.pendingAttachmentsChanged.emit(list(self._pending_attachments))
         if self.is_voice_mode:
             self.statusChanged.emit("󰍬 Voice Mode Active", "#7fd962")
@@ -486,6 +495,7 @@ class Backend(QObject):
     @pyqtSlot()
     def reset_session(self):
         """Reset conversation context and clear screen."""
+        surveillance_manager.stop()
         self.interrupt_ai()
         self.clearPendingAttachments()
         self.messages = [{"role": "system", "content": self._build_system_prompt()}]
@@ -553,7 +563,6 @@ class Backend(QObject):
 
     @pyqtSlot()
     def interrupt_ai(self):
-        surveillance_manager.stop()
         if hasattr(self, "ai_thread") and self.ai_thread is not None:
             if self.ai_thread.isRunning():
                 self.ai_thread.stop()
