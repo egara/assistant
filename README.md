@@ -313,7 +313,7 @@ Controls the speech-to-text (STT) and text-to-speech (TTS) pipelines.
     "tts_engine": "none",
     "whisper_model": "~/.local/share/assistant/models/ggml-small.bin",
     "silence_duration": "0.8",
-    "silence_threshold": "1%",
+    "silence_threshold": "4%",
     "asr": {
         "enabled": true,
         "endpoint": "http://127.0.0.1:52625/v1/audio/transcriptions",
@@ -341,7 +341,7 @@ Controls the speech-to-text (STT) and text-to-speech (TTS) pipelines.
     * **`api_key`** *(String, Optional)*: Optional Bearer token for remote ASR providers.
     * **Automatic Fallback**: If the remote ASR endpoint is unreachable or errors out, Assistant seamlessly falls back to the local CPU `whisper-cli`.
 * **`silence_duration`** *(String/Float, Optional)*: Silence duration in seconds required to automatically detect end-of-speech (defaults to `0.8`).
-* **`silence_threshold`** *(String, Optional)*: Energy threshold for silence cut (defaults to `"1%"`).
+* **`silence_threshold`** *(String, Optional)*: Energy threshold for silence cut (defaults to `"4%"`).
 * **`tts_engine`** *(String)*: Options are `"none"`, `"online"`, or `"local"`.
     * `none` (or `disabled`): Disables speech synthesis entirely. The assistant displays text without speaking.
     * `online`: Connects to Microsoft Edge's cloud neural speech synthesis stream. Requires an active network connection.

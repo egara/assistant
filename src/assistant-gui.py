@@ -778,7 +778,7 @@ class Backend(QObject):
     def record_with_silence(self):
         voice_conf = props.voice_config
         silence_duration = str(voice_conf.get("silence_duration", "0.8"))
-        silence_threshold = str(voice_conf.get("silence_threshold", "1%"))
+        silence_threshold = str(voice_conf.get("silence_threshold", "4%"))
         self.rec_process = subprocess.Popen(
             [
                 "rec",

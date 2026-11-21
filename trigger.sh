@@ -30,7 +30,7 @@ ASR_MODEL=$(jq -r '.voice.asr.model // "whisper"' "$CONFIG_FILE" 2>/dev/null)
 ASR_LANG=$(jq -r '.voice.asr.language // empty' "$CONFIG_FILE" 2>/dev/null)
 ASR_API_KEY=$(jq -r '.voice.asr.api_key // empty' "$CONFIG_FILE" 2>/dev/null)
 SILENCE_DURATION=$(jq -r '.voice.silence_duration // "0.8"' "$CONFIG_FILE" 2>/dev/null)
-SILENCE_THRESHOLD=$(jq -r '.voice.silence_threshold // "1%"' "$CONFIG_FILE" 2>/dev/null)
+SILENCE_THRESHOLD=$(jq -r '.voice.silence_threshold // "4%"' "$CONFIG_FILE" 2>/dev/null)
 
 if [[ -z "$WHISPER_MODEL" ]]; then
     WHISPER_MODEL="$HOME/.local/share/assistant/models/ggml-small.bin"
