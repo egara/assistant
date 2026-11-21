@@ -451,12 +451,12 @@ Tool categories routed by the decision engine:
 
 ### 6. The `"surveillance"` Block (Autonomous Webcam Monitoring)
 Configures autonomous webcam surveillance intervals and cooldowns:
-* `"interval_seconds"` *(int)*: Interval between camera frame captures and vision checks in seconds (default: `2`).
+* `"interval_seconds"` *(int)*: Interval between camera frame captures and vision checks in seconds (default: `5`).
 * `"trigger_cooldown_seconds"` *(float)*: Cooldown time in seconds between alert dispatches and saving snapshots when conditions remain active (default: `10.0`).
 
 ```json
 "surveillance": {
-  "interval_seconds": 2,
+  "interval_seconds": 5,
   "trigger_cooldown_seconds": 10.0
 }
 ```

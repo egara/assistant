@@ -39,8 +39,8 @@ TOOL_DEFINITIONS = [
                     },
                     "interval_seconds": {
                         "type": "integer",
-                        "default": 2,
-                        "description": "Interval between camera captures in seconds (minimum 1s, default 2s).",
+                        "default": 5,
+                        "description": "Interval between camera captures in seconds (minimum 1s, default 5s).",
                     },
                     "action": {
                         "type": "string",
@@ -145,7 +145,7 @@ class SurveillanceManager:
     def _init_state(self) -> None:
         self.is_active = False
         self.condition = ""
-        self.interval = 2
+        self.interval = 5
         self.action = "save_and_notify"
         self.device = "/dev/video0"
         self.thread: Optional[threading.Thread] = None

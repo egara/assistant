@@ -268,8 +268,8 @@ class PropertiesManager:
 
     @property
     def surveillance_interval(self) -> int:
-        """Configured default surveillance interval in seconds (default: 2)."""
-        return max(1, int(self.get("surveillance.interval_seconds", 2)))
+        """Configured default surveillance interval in seconds (default: 5)."""
+        return max(1, int(self.get("surveillance.interval_seconds", 5)))
 
     @property
     def surveillance_cooldown(self) -> float:
