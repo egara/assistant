@@ -51,6 +51,7 @@ class ModelCommand(BaseCommand):
                 m_info = catalog[k]
                 m_name = m_info.get("name", k)
                 status = " **[ACTIVO]**" if k == active_key else ""
-                lines.append(f"- • `{k}`: {m_name} ({m_info.get('base_url')}){status}")
+                vision_tag = " `[vision]`" if m_info.get("vision_enabled") else ""
+                lines.append(f"- • `{k}`: {m_name}{vision_tag} ({m_info.get('base_url')}){status}")
             lines.append("\nUso: `/model <nombre>` o solo `/model` para alternar al siguiente.")
             context.emit_message("sys", "\n".join(lines))

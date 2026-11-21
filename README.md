@@ -313,7 +313,7 @@ Controls the speech-to-text (STT) and text-to-speech (TTS) pipelines.
     "tts_engine": "none",
     "whisper_model": "~/.local/share/assistant/models/ggml-small.bin",
     "silence_duration": "0.8",
-    "silence_threshold": "1%",
+    "silence_threshold": "4%",
     "asr": {
         "enabled": true,
         "endpoint": "http://127.0.0.1:52625/v1/audio/transcriptions",
@@ -341,7 +341,7 @@ Controls the speech-to-text (STT) and text-to-speech (TTS) pipelines.
     * **`api_key`** *(String, Optional)*: Optional Bearer token for remote ASR providers.
     * **Automatic Fallback**: If the remote ASR endpoint is unreachable or errors out, Assistant seamlessly falls back to the local CPU `whisper-cli`.
 * **`silence_duration`** *(String/Float, Optional)*: Silence duration in seconds required to automatically detect end-of-speech (defaults to `0.8`).
-* **`silence_threshold`** *(String, Optional)*: Energy threshold for silence cut (defaults to `"1%"`).
+* **`silence_threshold`** *(String, Optional)*: Energy threshold for silence cut (defaults to `"4%"`).
 * **`tts_engine`** *(String)*: Options are `"none"`, `"online"`, or `"local"`.
     * `none` (or `disabled`): Disables speech synthesis entirely. The assistant displays text without speaking.
     * `online`: Connects to Microsoft Edge's cloud neural speech synthesis stream. Requires an active network connection.
@@ -442,13 +442,25 @@ When running FastFlowLM with decision models (`flm serve ... --decision d3:edge`
 
 Tool categories routed by the decision engine:
 * `conversational`: Pure chit-chat, explanations, or code guidance. No tools injected (saves context and avoids hallucinations).
-* `desktop`: Hyprland window/workspace management and system shortcuts.
-* `apps`: Launching desktop and terminal applications.
+* `desktop_and_apps`: Hyprland window/workspace management, launching desktop apps, and system shortcuts/keybindings (`open_application`, `manage_desktop`, `get_system_knowledge`).
+* `vision`: Screen visual inspection, screenshot capture, and webcam surveillance mode (`take_screenshot`, `start_surveillance`, `stop_surveillance`, `get_surveillance_status`).
 * `filesystem`: File manipulation (`read_file`, `write_file`, `replace_in_file`, `execute_command`).
 * `notes`: Local Obsidian vault actions (`obsidian_search`, `obsidian_read`, `obsidian_write`).
 * `weather`: Open-Meteo weather lookups (`get_weather`).
 * `cinema`: Cinema showtimes and movie listings from Tu Cine (`get_cinema_showtimes`).
 * `web_search`: Internet search via SearXNG MCP or DuckDuckGo (`web_search`).
+
+### 6. The `"surveillance"` Block (Autonomous Webcam Monitoring)
+Configures autonomous webcam surveillance intervals and cooldowns:
+* `"interval_seconds"` *(int)*: Interval between camera frame captures and vision checks in seconds (default: `5`).
+* `"trigger_cooldown_seconds"` *(float)*: Cooldown time in seconds between alert dispatches and saving snapshots when conditions remain active (default: `10.0`).
+
+```json
+"surveillance": {
+  "interval_seconds": 5,
+  "trigger_cooldown_seconds": 10.0
+}
+```
 
 ---
 
@@ -457,6 +469,13 @@ Tool categories routed by the decision engine:
 Assistant features a clean Material Design GUI styled with **SicOS Nerd Font** icons and high contrast:
 * **Interactive Help & Reset**: Click the `?` icon in the upper-right corner or the dedicated microphone toggle on the left of the input field.
 * **Interactive Model Selector Badge**: The active model pill badge right below the input box shows the current model and acts as a clickable dropdown selector to switch models on the fly without typing commands.
+* **Multimodal Attachments (`+` Button & Clipboard `Ctrl+V`)**: Attach images, documents, and notes via the integrated `+` button in the prompt bar, or paste copied screenshots/images directly with `Ctrl+V`:
+  * **Images (`.png`, `.jpg`, `.jpeg`, `.webp`, `.gif`, `.bmp`)**: Encoded to base64 data URIs for vision-capable models (e.g., Gemma 3/4, Qwen VL, MiniCPM-V).
+  * **PDF Documents (`.pdf`)**: Extracted page text and interactive PDF form fields/inputs (via `pypdf`), injected cleanly into the context turn so the model can inspect and reason over documents and filled forms.
+  * **Plain Text & Markdown (`.txt`, `.md`, `.markdown`)**: Decoded and injected directly into the user message context as formatted code blocks.
+  * **Attachment Chips Preview**: Includes dynamic Nerd Font filetype icons (`󰈦` PDF, `󰈙` text/markdown, `󰋩` images) and single-click removal.
+* **Agentic Screen Inspection & Screenshot (`take_screenshot`)**: When asking Assistant to analyze errors, inspect what is on screen, or take a screenshot, the LLM autonomously triggers `take_screenshot`. Assistant temporarily hides its window to capture the clean desktop or active window via `grim` (Wayland) or `maim` (X11), restores the window, and injects the image directly into the multimodal loop for visual diagnosis.
+* **Autonomous Webcam Surveillance Mode (`start_surveillance` / `stop_surveillance`)**: Ask Assistant to enter surveillance mode to monitor dynamic events (e.g., *"ponte en modo vigilancia y avísame cuando veas a una persona"*, *"vigila si pasa un gato"*). Assistant samples webcam frames periodically (default 5s) via `ffmpeg`, inspects them with multimodal vision models, saves triggered frames to `~/Downloads`, and issues critical desktop notifications (`notify-send`) and voice alerts. Surveillance remains continuously active (with intelligent alert cooldown) until explicitly asked to stop.
 * **Auto-Focus & Smart Scroll**: Automatic focus on the input box upon launch, auto-scrolling during fast token streaming, and free manual scrolling when inspecting historical outputs.
 
 ### Built-in Slash Commands & Shortcuts
@@ -546,7 +565,7 @@ Assistant supports the Model Context Protocol (MCP) using SSE and streamable HTT
 * **`type`**: Semantic category for routing and execution:
   * `"web_search"`: Provider for web searches. Tools from these servers are unified transparently behind the canonical `web_search` tool (ordered by `priority`), with DuckDuckGo as automatic fallback. The LLM only sees a single clean `web_search` schema.
   * `"rag"` / `"knowledge_base"`: Semantic document retrieval. The Decision Router dynamically registers this category and routes related user queries here.
-  * `"filesystem"` / `"notes"` / `"desktop_and_apps"`: Merges tools directly into standard system categories.
+  * `"filesystem"` / `"notes"` / `"desktop_and_apps"` / `"vision"`: Merges tools directly into standard system categories.
   * Custom types (e.g. `"github"`, `"home_automation"`): Dynamically registered in the `DecisionRouter` with their provided `description`.
   * Omitted or `"always"`: Tools are treated as global tools and injected whenever tools are active (non-conversational turns).
 * **`priority`** *(integer, default 0)*: Disambiguates multiple providers of the same type (e.g. multiple search engines).

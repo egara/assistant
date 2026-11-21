@@ -40,6 +40,14 @@ from .hyprland import (
     configure_hyprland,
 )
 from .cinema import get_cinema_showtimes, TOOL_DEFINITIONS as CINEMA_TOOLS
+from .screenshot import take_screenshot, TOOL_DEFINITIONS as SCREENSHOT_TOOLS
+from .surveillance import (
+    start_surveillance,
+    stop_surveillance,
+    get_surveillance_status,
+    surveillance_manager,
+    TOOL_DEFINITIONS as SURVEILLANCE_TOOLS,
+)
 from .dispatch import dispatch_tool
 
 __all__ = [
@@ -52,6 +60,15 @@ __all__ = [
     # Cinema
     "get_cinema_showtimes",
     "CINEMA_TOOLS",
+    # Screenshot
+    "take_screenshot",
+    "SCREENSHOT_TOOLS",
+    # Surveillance
+    "start_surveillance",
+    "stop_surveillance",
+    "get_surveillance_status",
+    "surveillance_manager",
+    "SURVEILLANCE_TOOLS",
     # Obsidian
     "search_obsidian",
     "read_obsidian",

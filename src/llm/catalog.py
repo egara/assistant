@@ -166,6 +166,13 @@ class ModelCatalog:
             return next(iter(self.catalog.values()))
         return None
 
+    def is_vision_supported(self, key: str) -> bool:
+        """Check whether the model corresponding to key supports multimodal vision inputs."""
+        model_info = self.get_model(key)
+        if model_info:
+            return bool(model_info.get("vision_enabled", False))
+        return False
+
     def get_structured_models_list(self, active_key: str) -> List[Dict[str, Any]]:
         """Return structured list of items (headers and model entries) for the QML popup.
 

@@ -28,6 +28,7 @@
               langdetect
               edge-tts
               pyqt6
+              pypdf
               mcp
             ]
           );
@@ -45,7 +46,7 @@
             }:
             pkgs.stdenv.mkDerivation rec {
               pname = "assistant";
-              version = "1.2.0";
+              version = "1.3.0";
 
               src = ./.;
 
@@ -175,6 +176,7 @@
                       pkgs.maim
                       pkgs.xdotool
                       pkgs.wmctrl
+                      pkgs.ffmpeg-headless
                       pythonEnv
                     ]
                   }:$out/bin"
@@ -190,6 +192,12 @@
                       pkgs.whisper-cpp
                       pkgs.wireplumber
                       pkgs.wmctrl
+                      pkgs.grim
+                      pkgs.maim
+                      pkgs.xdotool
+                      pkgs.ffmpeg-headless
+                      pkgs.libnotify
+                      pkgs.jq
                       pythonEnv
                     ]
                   }

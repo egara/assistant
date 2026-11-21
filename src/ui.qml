@@ -25,11 +25,17 @@ ApplicationWindow {
     property bool userScrolledUp: false
     property bool isVoiceActive: false
     property bool isTtsActive: false
+    property bool isVisionSupported: true
+    property bool isSurveillanceActive: false
     readonly property string monoFont: "JetBrainsMono Nerd Font Mono"
     readonly property int systemFontSize: window.font.pixelSize > 0 ? window.font.pixelSize : (window.font.pointSize > 0 ? Math.round(window.font.pointSize * 1.33) : 14)
 
     ListModel {
         id: modelsModel
+    }
+
+    ListModel {
+        id: attachmentsModel
     }
 
     Component.onCompleted: {
@@ -52,6 +58,9 @@ ApplicationWindow {
         }
         function onTtsStateChanged(active) {
             isTtsActive = active;
+        }
+        function onSurveillanceActiveChanged(active) {
+            isSurveillanceActive = active;
         }
         function onStatusChanged(text, colorHex) {
             statusLabel.text = text;
@@ -107,6 +116,20 @@ ApplicationWindow {
             activeAiIndex = -1;
             userScrolledUp = false;
         }
+        function onVisionSupportedChanged(supported) {
+            isVisionSupported = supported;
+        }
+        function onPendingAttachmentsChanged(filesList) {
+            attachmentsModel.clear();
+            for (var i = 0; i < filesList.length; i++) {
+                var fPath = filesList[i];
+                var fName = fPath.split("/").pop();
+                attachmentsModel.append({
+                    "filePath": fPath,
+                    "fileName": fName
+                });
+            }
+        }
     }
 
     ListModel {
@@ -123,8 +146,8 @@ ApplicationWindow {
             Layout.alignment: Qt.AlignHCenter
             height: 28
             radius: 14
-            color: "#181d28"
-            border.color: "#283040"
+            color: window.isSurveillanceActive ? "#2a151b" : "#181d28"
+            border.color: window.isSurveillanceActive ? "#ff5555" : "#283040"
             border.width: 1
             implicitWidth: statusLayout.implicitWidth + 24
 
@@ -147,6 +170,34 @@ ApplicationWindow {
                     color: "#828c99"
                     font.family: window.monoFont
                     font.pixelSize: 12
+                    font.bold: true
+                    Layout.alignment: Qt.AlignVCenter
+                }
+
+                // Surveillance blinking indicator dot
+                Rectangle {
+                    id: surveillanceDot
+                    visible: window.isSurveillanceActive
+                    width: 8
+                    height: 8
+                    radius: 4
+                    color: "#ff5555"
+                    Layout.alignment: Qt.AlignVCenter
+
+                    SequentialAnimation on opacity {
+                        running: window.isSurveillanceActive
+                        loops: Animation.Infinite
+                        PropertyAnimation { to: 0.2; duration: 600 }
+                        PropertyAnimation { to: 1.0; duration: 600 }
+                    }
+                }
+
+                Label {
+                    visible: window.isSurveillanceActive
+                    text: "REC"
+                    color: "#ff5555"
+                    font.family: window.monoFont
+                    font.pixelSize: 10
                     font.bold: true
                     Layout.alignment: Qt.AlignVCenter
                 }
@@ -323,6 +374,105 @@ ApplicationWindow {
             }
         }
 
+        // Attachments Preview Bar (Chips)
+        RowLayout {
+            id: attachmentsBar
+            visible: attachmentsModel.count > 0
+            Layout.fillWidth: true
+            spacing: 8
+
+            ScrollView {
+                Layout.fillWidth: true
+                Layout.preferredHeight: 36
+                clip: true
+                ScrollBar.horizontal.policy: ScrollBar.AsNeeded
+                ScrollBar.vertical.policy: ScrollBar.AlwaysOff
+
+                Row {
+                    spacing: 8
+                    Repeater {
+                        model: attachmentsModel
+                        delegate: Rectangle {
+                            height: 28
+                            radius: 14
+                            color: "#181d28"
+                            border.color: "#283040"
+                            border.width: 1
+                            implicitWidth: chipRow.implicitWidth + 18
+
+                            Row {
+                                id: chipRow
+                                anchors.centerIn: parent
+                                spacing: 6
+
+                                Text {
+                                    text: {
+                                        var ext = model.fileName.split('.').pop().toLowerCase();
+                                        if (ext === "pdf") return "󰈦";
+                                        if (ext === "txt" || ext === "md" || ext === "markdown") return "󰈙";
+                                        if (["png", "jpg", "jpeg", "webp", "gif", "bmp"].indexOf(ext) !== -1) return "󰋩";
+                                        return "󰏫";
+                                    }
+                                    color: "#59c2ff"
+                                    font.family: window.monoFont
+                                    font.pixelSize: 12
+                                    anchors.verticalCenter: parent.verticalCenter
+                                }
+
+                                Text {
+                                    text: model.fileName
+                                    color: "#e6e1cf"
+                                    font.family: window.monoFont
+                                    font.pixelSize: 11
+                                    elide: Text.ElideMiddle
+                                    maximumLineCount: 1
+                                    anchors.verticalCenter: parent.verticalCenter
+                                }
+
+                                Text {
+                                    text: "✕"
+                                    color: chipCloseMouse.containsMouse ? "#f07178" : "#828c99"
+                                    font.family: window.monoFont
+                                    font.pixelSize: 11
+                                    font.bold: true
+                                    anchors.verticalCenter: parent.verticalCenter
+
+                                    MouseArea {
+                                        id: chipCloseMouse
+                                        anchors.fill: parent
+                                        hoverEnabled: true
+                                        cursorShape: Qt.PointingHandCursor
+                                        onClicked: backend.removeAttachment(model.filePath)
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+
+            Button {
+                text: "Limpiar"
+                Layout.preferredHeight: 28
+                visible: attachmentsModel.count > 1
+                background: Rectangle {
+                    color: parent.hovered ? "#341a22" : "transparent"
+                    radius: 8
+                    border.color: parent.hovered ? "#f07178" : "#283446"
+                    border.width: 1
+                }
+                contentItem: Text {
+                    text: parent.text
+                    color: parent.hovered ? "#f07178" : "#828c99"
+                    font.family: window.monoFont
+                    font.pixelSize: 10
+                    horizontalAlignment: Text.AlignHCenter
+                    verticalAlignment: Text.AlignVCenter
+                }
+                onClicked: backend.clearPendingAttachments()
+            }
+        }
+
         // Bottom Controls Bar
         RowLayout {
             Layout.fillWidth: true
@@ -378,56 +528,95 @@ ApplicationWindow {
                 onClicked: backend.toggleTTS()
             }
 
-            // Text Input Box Container
-            ScrollView {
-                id: inputScrollView
+            // Text Input Box Container with integrated '+' Attach Button
+            Rectangle {
+                id: inputContainer
                 Layout.fillWidth: true
                 Layout.preferredHeight: 54
-                clip: true
-                ScrollBar.vertical.policy: ScrollBar.AsNeeded
-                background: Rectangle {
-                    color: "#181d28"
-                    radius: 14
-                    border.color: inputBox.activeFocus ? "#59c2ff" : "#283040"
-                    border.width: inputBox.activeFocus ? 1.5 : 1
-                }
+                color: "#181d28"
+                radius: 14
+                border.color: inputBox.activeFocus ? "#59c2ff" : "#283040"
+                border.width: 1
 
-                TextArea {
-                    id: inputBox
-                    width: inputScrollView.availableWidth
-                    placeholderText: "Escribe un mensaje o pulsa el micro..."
-                    placeholderTextColor: "#4f5a6b"
-                    color: "#e6e1cf"
-                    font.family: window.monoFont
-                    font.pixelSize: window.systemFontSize
-                    wrapMode: TextArea.Wrap
-                    verticalAlignment: lineCount <= 1 ? TextEdit.AlignVCenter : TextEdit.AlignTop
-                    leftPadding: 12
-                    rightPadding: 12
-                    topPadding: lineCount <= 1 ? 6 : 8
-                    bottomPadding: lineCount <= 1 ? 6 : 8
+                RowLayout {
+                    anchors.fill: parent
+                    spacing: 0
 
-                    onCursorRectangleChanged: {
-                        var flick = inputScrollView.contentItem;
-                        if (!flick) return;
-                        if (cursorRectangle.y < flick.contentY) {
-                            flick.contentY = Math.max(0, cursorRectangle.y - topPadding);
-                        } else if (cursorRectangle.y + cursorRectangle.height > flick.contentY + flick.height) {
-                            flick.contentY = Math.min(flick.contentHeight - flick.height, cursorRectangle.y + cursorRectangle.height + bottomPadding - flick.height);
+                    // Integrated Attach File Button (+)
+                    Button {
+                        id: attachButton
+                        text: "󰐕"
+                        Layout.preferredWidth: 42
+                        Layout.fillHeight: true
+                        ToolTip.visible: hovered
+                        ToolTip.text: isVisionSupported ? "Adjuntar archivo o imagen..." : "Adjuntar archivo (Aviso: el modelo activo no soporta visión multimodal)"
+                        background: Rectangle {
+                            color: "transparent"
                         }
+                        contentItem: Text {
+                            text: parent.text
+                            color: attachmentsModel.count > 0 ? "#59c2ff" : (parent.hovered ? "#59c2ff" : "#606b7a")
+                            font.family: window.monoFont
+                            font.pixelSize: 20
+                            horizontalAlignment: Text.AlignHCenter
+                            verticalAlignment: Text.AlignVCenter
+                        }
+                        onClicked: backend.selectFilesDialog()
                     }
 
-                    Keys.onPressed: event => {
-                        if (event.key === Qt.Key_Return && !event.modifiers) {
-                            var txt = text.trim();
-                            if (txt !== "") {
-                                if (txt.toLowerCase() === "v")
-                                    backend.toggleVoiceRecording();
-                                else
-                                    backend.processInput(txt);
-                                text = "";
+                    // Text Input ScrollView
+                    ScrollView {
+                        id: inputScrollView
+                        Layout.fillWidth: true
+                        Layout.fillHeight: true
+                        clip: true
+                        ScrollBar.vertical.policy: ScrollBar.AsNeeded
+                        background: null
+
+                        TextArea {
+                            id: inputBox
+                            width: inputScrollView.availableWidth
+                            placeholderText: "Escribe un mensaje o pulsa el micro..."
+                            placeholderTextColor: "#4f5a6b"
+                            color: "#e6e1cf"
+                            background: null
+                            font.family: window.monoFont
+                            font.pixelSize: window.systemFontSize
+                            wrapMode: TextArea.Wrap
+                            verticalAlignment: lineCount <= 1 ? TextEdit.AlignVCenter : TextEdit.AlignTop
+                            leftPadding: 4
+                            rightPadding: 12
+                            topPadding: lineCount <= 1 ? 6 : 8
+                            bottomPadding: lineCount <= 1 ? 6 : 8
+
+                            onCursorRectangleChanged: {
+                                var flick = inputScrollView.contentItem;
+                                if (!flick) return;
+                                if (cursorRectangle.y < flick.contentY) {
+                                    flick.contentY = Math.max(0, cursorRectangle.y - topPadding);
+                                } else if (cursorRectangle.y + cursorRectangle.height > flick.contentY + flick.height) {
+                                    flick.contentY = Math.min(flick.contentHeight - flick.height, cursorRectangle.y + cursorRectangle.height + bottomPadding - flick.height);
+                                }
                             }
-                            event.accepted = true;
+
+                            Keys.onPressed: event => {
+                                if (event.key === Qt.Key_Return && !event.modifiers) {
+                                    var txt = text.trim();
+                                    if (txt !== "") {
+                                        if (txt.toLowerCase() === "v")
+                                            backend.toggleVoiceRecording();
+                                        else
+                                            backend.processInput(txt);
+                                        text = "";
+                                    }
+                                    event.accepted = true;
+                                } else if ((event.key === Qt.Key_V) && (event.modifiers & Qt.ControlModifier)) {
+                                    // If clipboard has an image, attach it and consume event
+                                    if (backend.pasteFromClipboard()) {
+                                        event.accepted = true;
+                                    }
+                                }
+                            }
                         }
                     }
                 }
@@ -697,7 +886,7 @@ ApplicationWindow {
                             }
 
                             Text {
-                                text: "About (v1.2.0)"
+                                text: "About (v1.3.0)"
                                 color: "#828c99"
                                 font.family: window.monoFont
                                 font.pixelSize: 11

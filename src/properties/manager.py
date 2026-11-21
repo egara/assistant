@@ -39,7 +39,7 @@ class PropertiesManager:
         if getattr(self, "_initialized", False):
             return
 
-        self.version = "1.2.0"
+        self.version = "1.3.0"
         self._listeners: Dict[str, List[Callable[[Any], None]]] = {}
 
         # 1. Base Directories & XDG Paths
@@ -265,6 +265,16 @@ class PropertiesManager:
     @property
     def decision_router_config(self) -> Dict[str, Any]:
         return self.get("decision_router", {})
+
+    @property
+    def surveillance_interval(self) -> int:
+        """Configured default surveillance interval in seconds (default: 5)."""
+        return max(1, int(self.get("surveillance.interval_seconds", 5)))
+
+    @property
+    def surveillance_cooldown(self) -> float:
+        """Configured cooldown between surveillance trigger notifications in seconds (default: 10.0)."""
+        return max(1.0, float(self.get("surveillance.trigger_cooldown_seconds", 10.0)))
 
     @property
     def history_duration_minutes(self) -> int:

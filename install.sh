@@ -34,18 +34,18 @@ echo -e "\n${YELLOW}[1/6] Detecting OS and installing system dependencies...${NC
 if [ -f /etc/os-release ]; then . /etc/os-release; OS=$ID; OS_LIKE=$ID_LIKE; else exit 1; fi
 
 if [[ "$OS" == "arch" || "$OS_LIKE" == *"arch"* ]]; then
-    sudo pacman -Syu --needed --noconfirm sox jq pipewire pipewire-pulse wl-clipboard grim playerctl python python-virtualenv wget curl base-devel git xclip maim xdotool wmctrl cmake xcb-util-cursor
+    sudo pacman -Syu --needed --noconfirm sox jq pipewire pipewire-pulse wl-clipboard grim playerctl python python-virtualenv wget curl base-devel git xclip maim xdotool wmctrl cmake xcb-util-cursor ffmpeg libnotify
 elif [[ "$OS" == "ubuntu" || "$OS" == "debian" || "$OS_LIKE" == *"debian"* || "$OS_LIKE" == *"ubuntu"* ]]; then
     sudo apt-get update
-    sudo apt-get install -y sox libsox-fmt-all jq pipewire-bin wl-clipboard grim playerctl python3-venv wget curl build-essential git xclip maim xdotool wmctrl cmake libxcb-cursor0
+    sudo apt-get install -y sox libsox-fmt-all jq pipewire-bin wl-clipboard grim playerctl python3-venv wget curl build-essential git xclip maim xdotool wmctrl cmake libxcb-cursor0 ffmpeg libnotify-bin
 elif [[ "$OS" == "fedora" || "$OS_LIKE" == *"fedora"* ]]; then
-    sudo dnf install -y sox jq pipewire-utils wl-clipboard grim playerctl python3-virtualenv wget curl make automake gcc gcc-c++ git xclip maim xdotool wmctrl cmake xcb-util-cursor
+    sudo dnf install -y sox jq pipewire-utils wl-clipboard grim playerctl python3-virtualenv wget curl make automake gcc gcc-c++ git xclip maim xdotool wmctrl cmake xcb-util-cursor ffmpeg libnotify
 fi
 
 echo -e "\n${YELLOW}[2/6] Setting up isolated Python environment and dependencies...${NC}"
 if [ ! -d "$VENV_DIR" ]; then python3 -m venv "$VENV_DIR"; fi
 "$VENV_DIR/bin/pip" install --upgrade pip
-"$VENV_DIR/bin/pip" install openai ddgs requests beautifulsoup4 edge-tts langdetect PyQt6 mcp
+"$VENV_DIR/bin/pip" install openai ddgs requests beautifulsoup4 edge-tts langdetect PyQt6 pypdf mcp
 
 echo -e "\n${YELLOW}[3/6] Setting up AI Audio Binaries...${NC}"
 if [ ! -f "$BIN_DIR/whisper-cli" ] || (command -v ldd >/dev/null && ldd "$BIN_DIR/whisper-cli" 2>&1 | grep -q "not found"); then
