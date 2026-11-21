@@ -442,7 +442,8 @@ When running FastFlowLM with decision models (`flm serve ... --decision d3:edge`
 
 Tool categories routed by the decision engine:
 * `conversational`: Pure chit-chat, explanations, or code guidance. No tools injected (saves context and avoids hallucinations).
-* `desktop_and_apps`: Hyprland window/workspace management, launching desktop apps, visual screen inspection, screenshot capture, and webcam surveillance (`open_application`, `manage_desktop`, `get_system_knowledge`, `take_screenshot`, `start_surveillance`, `stop_surveillance`, `get_surveillance_status`).
+* `desktop_and_apps`: Hyprland window/workspace management, launching desktop apps, and system shortcuts/keybindings (`open_application`, `manage_desktop`, `get_system_knowledge`).
+* `vision`: Screen visual inspection, screenshot capture, and webcam surveillance mode (`take_screenshot`, `start_surveillance`, `stop_surveillance`, `get_surveillance_status`).
 * `filesystem`: File manipulation (`read_file`, `write_file`, `replace_in_file`, `execute_command`).
 * `notes`: Local Obsidian vault actions (`obsidian_search`, `obsidian_read`, `obsidian_write`).
 * `weather`: Open-Meteo weather lookups (`get_weather`).
@@ -560,7 +561,7 @@ Assistant supports the Model Context Protocol (MCP) using SSE and streamable HTT
 * **`type`**: Semantic category for routing and execution:
   * `"web_search"`: Provider for web searches. Tools from these servers are unified transparently behind the canonical `web_search` tool (ordered by `priority`), with DuckDuckGo as automatic fallback. The LLM only sees a single clean `web_search` schema.
   * `"rag"` / `"knowledge_base"`: Semantic document retrieval. The Decision Router dynamically registers this category and routes related user queries here.
-  * `"filesystem"` / `"notes"` / `"desktop_and_apps"`: Merges tools directly into standard system categories.
+  * `"filesystem"` / `"notes"` / `"desktop_and_apps"` / `"vision"`: Merges tools directly into standard system categories.
   * Custom types (e.g. `"github"`, `"home_automation"`): Dynamically registered in the `DecisionRouter` with their provided `description`.
   * Omitted or `"always"`: Tools are treated as global tools and injected whenever tools are active (non-conversational turns).
 * **`priority`** *(integer, default 0)*: Disambiguates multiple providers of the same type (e.g. multiple search engines).
