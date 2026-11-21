@@ -40,9 +40,9 @@ TIME_KEYWORDS = [
 
 
 DEFAULT_CRITERIA: Dict[str, str] = {
-    "conversational": "Conversación informal, charla, respuestas teóricas, saludos o explicaciones conceptuales sin datos de última hora ni reportes.",
+    "conversational": "Conversación informal, charla amigable, preguntas teóricas, saludos o explicaciones conceptuales sin datos de última hora ni órdenes imperativas (no elegir para parar, vigilar, abrir o cerrar nada).",
     "datetime": "Preguntas exclusivas sobre qué hora es, qué día es hoy, la fecha actual o zona horaria.",
-    "desktop_and_apps": "Escritorio Hyprland, webcam y aplicaciones: activar o detener modo vigilancia por cámara web para detectar personas, mascotas o eventos (e.g. ponte en modo vigilancia, avísame si ves una persona, vigila la cámara, para el modo vigilancia, para la vigilancia, detén la vigilancia, cancela la vigilancia, desactiva vigilancia, deja de vigilar), hacer capturas de pantalla o inspeccionar visualmente lo que se ve en pantalla o ventanas (e.g. captura la pantalla, echa un vistazo a la pantalla, mira este error que sale en pantalla), abrir o lanzar aplicaciones o archivos (e.g. abrir cartera.ods con libreoffice, abre chrome, lanza kitty, confirmación afirmativa del usuario como 'si' para abrir o ver un archivo), reproducir música o canciones (reproduce pura dinamita), cerrar ventanas, alternar ventanas flotantes (flota chrome) o cambiar de workspace.",
+    "desktop_and_apps": "Escritorio Hyprland, webcam y aplicaciones: órdenes de parar, detener, terminar o activar la vigilancia y avisos por webcam (e.g. para la vigilancia, para el modo vigilancia, detén la vigilancia, avisa cuando me quite las gafas, avísame si ves una persona, vigila la cámara, ponte en modo vigilancia), cerrar ventanas o aplicaciones (e.g. cierra yazi, cierra chrome, cerrar ventana, cierra terminal), abrir o lanzar aplicaciones o archivos (e.g. abre yazi, abre chrome, lanza kitty, abrir cartera.ods con libreoffice), hacer capturas de pantalla o inspeccionar visualmente lo que se ve en pantalla o ventanas (e.g. captura la pantalla, echa un vistazo a la pantalla, mira este error que sale en pantalla), reproducir música o canciones (reproduce pura dinamita), alternar ventanas flotantes (flota chrome) o cambiar de workspace.",
     "filesystem": "Operaciones con archivos y terminal: buscar archivos en el disco (/home, extensiones .ods, .pdf), listar carpetas (lista canciones en descargas/Downloads), leer o escribir archivos, o ejecutar comandos bash.",
     "notes": "Buscar o leer notas en la aplicación Obsidian.",
     "weather": "Previsión del tiempo, lluvia, viento, nieve, temperatura o clima meteorológico en ciudades o regiones (e.g. qué tiempo hará en León, lloverá mañana, si puedo ir en bici, moto o pasear según el clima, qué ropa ponerme). No elegir para eventos, cine, compras o lugares de ocio.",
@@ -136,7 +136,7 @@ class DecisionRouter:
                     "type": "choice",
                     "instructions": (
                         "Determina qué categoría de herramientas del sistema es requerida para satisfacer la petición del usuario en español teniendo en cuenta el contexto previo. "
-                        "Elige 'conversational' si es charla informal, preguntas teóricas, saludos o explicaciones que no necesitan herramientas."
+                        "Elige 'conversational' únicamente si es charla informal, preguntas teóricas, saludos o explicaciones que no necesitan herramientas ni ejecutar acciones en el sistema."
                     ),
                     "criteria": self.criteria,
                 },
