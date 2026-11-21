@@ -442,7 +442,7 @@ When running FastFlowLM with decision models (`flm serve ... --decision d3:edge`
 
 Tool categories routed by the decision engine:
 * `conversational`: Pure chit-chat, explanations, or code guidance. No tools injected (saves context and avoids hallucinations).
-* `desktop_and_apps`: Hyprland window/workspace management, launching desktop apps, visual screen inspection, and screenshot capture (`open_application`, `manage_desktop`, `get_system_knowledge`, `take_screenshot`).
+* `desktop_and_apps`: Hyprland window/workspace management, launching desktop apps, visual screen inspection, screenshot capture, and webcam surveillance (`open_application`, `manage_desktop`, `get_system_knowledge`, `take_screenshot`, `start_surveillance`, `stop_surveillance`, `get_surveillance_status`).
 * `filesystem`: File manipulation (`read_file`, `write_file`, `replace_in_file`, `execute_command`).
 * `notes`: Local Obsidian vault actions (`obsidian_search`, `obsidian_read`, `obsidian_write`).
 * `weather`: Open-Meteo weather lookups (`get_weather`).
@@ -458,6 +458,7 @@ Assistant features a clean Material Design GUI styled with **SicOS Nerd Font** i
 * **Interactive Model Selector Badge**: The active model pill badge right below the input box shows the current model and acts as a clickable dropdown selector to switch models on the fly without typing commands.
 * **Multimodal File & Image Attachments (`+` Button & Clipboard `Ctrl+V`)**: Attach files via the integrated `+` button in the prompt bar, or paste copied screenshots/images directly with `Ctrl+V`. Includes removable chips preview and vision capability indicators.
 * **Agentic Screen Inspection & Screenshot (`take_screenshot`)**: When asking Assistant to analyze errors, inspect what is on screen, or take a screenshot, the LLM autonomously triggers `take_screenshot`. Assistant temporarily hides its window to capture the clean desktop or active window via `grim` (Wayland) or `maim` (X11), restores the window, and injects the image directly into the multimodal loop for visual diagnosis.
+* **Autonomous Webcam Surveillance Mode (`start_surveillance` / `stop_surveillance`)**: Ask Assistant to enter surveillance mode to monitor dynamic events (e.g., *"ponte en modo vigilancia y avísame cuando veas a una persona"*, *"vigila si pasa un gato"*). Assistant samples webcam frames periodically (default 5s) via `ffmpeg`, inspects them with multimodal vision models, saves triggered frames to `~/Downloads`, and issues critical desktop notifications (`notify-send`) and voice alerts.
 * **Auto-Focus & Smart Scroll**: Automatic focus on the input box upon launch, auto-scrolling during fast token streaming, and free manual scrolling when inspecting historical outputs.
 
 ### Built-in Slash Commands & Shortcuts

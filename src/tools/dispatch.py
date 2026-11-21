@@ -21,6 +21,11 @@ from tools.weather import get_weather
 from tools.web import perform_web_search
 from tools.cinema import get_cinema_showtimes
 from tools.screenshot import take_screenshot
+from tools.surveillance import (
+    start_surveillance,
+    stop_surveillance,
+    get_surveillance_status,
+)
 
 
 def dispatch_tool(
@@ -114,6 +119,19 @@ def dispatch_tool(
                 "image_b64": b64_data,
             }, False
         return status_text, False
+    if tool_name == "start_surveillance":
+        return (
+            start_surveillance(
+                condition=args.get("condition", ""),
+                interval_seconds=args.get("interval_seconds", 5),
+                action=args.get("action", "save_and_notify"),
+            ),
+            False,
+        )
+    if tool_name == "stop_surveillance":
+        return stop_surveillance(), False
+    if tool_name == "get_surveillance_status":
+        return get_surveillance_status(), False
     if mcp_manager is not None and hasattr(mcp_manager, "tools") and tool_name in mcp_manager.tools:
         return mcp_manager.call_tool(tool_name, args), False
 

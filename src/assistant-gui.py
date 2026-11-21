@@ -78,6 +78,11 @@ from tools import (
     CINEMA_TOOLS,
     take_screenshot,
     SCREENSHOT_TOOLS,
+    start_surveillance,
+    stop_surveillance,
+    get_surveillance_status,
+    surveillance_manager,
+    SURVEILLANCE_TOOLS,
 )
 from routing import DecisionRouter
 from commands import create_default_registry, CommandContext
@@ -148,6 +153,7 @@ tools = (
     + WEATHER_TOOLS
     + CINEMA_TOOLS
     + SCREENSHOT_TOOLS
+    + SURVEILLANCE_TOOLS
     + WEB_TOOLS
     + OBSIDIAN_TOOLS
     + OS_TOOLS
@@ -305,6 +311,25 @@ class Backend(QObject):
 
         self.load_history()
 
+        # Configure Surveillance Manager with the active model client & notification callback
+        self._update_surveillance_client()
+
+    def _update_surveillance_client(self):
+        selected_model_cfg = MODELS_CATALOG.get(self.active_model_key, next(iter(MODELS_CATALOG.values())))
+        client = selected_model_cfg.get("client")
+        model_name = selected_model_cfg.get("name")
+        surveillance_manager.configure_vision_client(
+            client=client,
+            model_name=model_name,
+            on_trigger_callback=lambda desc, path: QMetaObject.invokeMethod(
+                self,
+                "on_surveillance_triggered",
+                Qt.ConnectionType.QueuedConnection,
+                desc,
+                path,
+            ),
+        )
+
     def _set_active_role(self, role_id: str) -> bool:
         success = props.set_active_role(role_id)
         if success:
@@ -318,6 +343,7 @@ class Backend(QObject):
     def _set_active_model_key(self, key: str) -> None:
         props.set_active_model_key(key)
         self.visionSupportedChanged.emit(self.is_vision_supported)
+        self._update_surveillance_client()
 
     @property
     def is_vision_supported(self) -> bool:
@@ -343,6 +369,20 @@ class Backend(QObject):
     def request_show_window(self):
         """Thread-safe request to show window via Qt queued event loop."""
         QMetaObject.invokeMethod(self, "show_window", Qt.ConnectionType.QueuedConnection)
+
+    @pyqtSlot(str, str)
+    def on_surveillance_triggered(self, description: str, saved_image_path: str):
+        """Handle background surveillance trigger event on the GUI main thread."""
+        logger.info(f"GUI received surveillance trigger: {description}")
+        msg = f"🚨 **¡Alerta de Vigilancia!**\n\n{description}"
+        if saved_image_path and os.path.exists(saved_image_path):
+            msg += f"\n\n📁 *Captura guardada en:* `{saved_image_path}`"
+        self.messageAdded.emit("ai", msg)
+        self.messages.append({"role": "assistant", "content": msg})
+        self.save_history()
+        self.statusChanged.emit("🚨 Surveillance Triggered!", "#ff79c6")
+        if self.tts_enabled:
+            self.play_audio(f"Alerta de vigilancia: {description}")
 
     @property
     def active_model_key(self) -> str:
@@ -412,6 +452,8 @@ class Backend(QObject):
             "`get_current_time` to frame your search queries and final report. NEVER revert to pre-training cutoff dates or assume past years.\n"
             "- CRITICAL RULE FOR SCREEN & VISUAL ANALYSIS: When the user asks to look at, inspect, review, or analyze something on screen or an error currently displayed (e.g., 'mira la pantalla', 'haz una captura', 'mira este error que sale en pantalla', 'qué tengo abierto'), "
             "you MUST call `take_screenshot(target='fullscreen'|'active_window')`. The assistant window will automatically hide and restore during the capture.\n"
+            "- CRITICAL RULE FOR WEBCAM SURVEILLANCE: When the user asks to activate surveillance mode or monitor the camera for something (e.g., 'ponte en modo vigilancia y avísame cuando veas a una persona', 'vigila la cámara si entra alguien', 'avísame si ves un gato', 'para la vigilancia'), "
+            "you MUST call `start_surveillance(condition='...', interval_seconds=5)` or `stop_surveillance()`. Do NOT pretend to monitor without calling the tool.\n"
             "- CRITICAL RULE FOR IMAGES & ATTACHMENTS: When an image is attached to the conversation or provided by a tool, inspect and analyze its visual content "
             "directly to answer the user's inquiry.\n"
             "- Keep answers concise, natural, and conversational."
@@ -511,6 +553,7 @@ class Backend(QObject):
 
     @pyqtSlot()
     def interrupt_ai(self):
+        surveillance_manager.stop()
         if hasattr(self, "ai_thread") and self.ai_thread is not None:
             if self.ai_thread.isRunning():
                 self.ai_thread.stop()

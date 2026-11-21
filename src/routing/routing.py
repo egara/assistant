@@ -21,6 +21,9 @@ DEFAULT_CATEGORIES: Dict[str, List[str]] = {
         "manage_desktop",
         "get_system_knowledge",
         "take_screenshot",
+        "start_surveillance",
+        "stop_surveillance",
+        "get_surveillance_status",
     ],
     "filesystem": ["read_file", "write_file", "replace_in_file", "execute_command"],
     "notes": ["obsidian_search", "obsidian_read", "obsidian_write"],
@@ -39,7 +42,7 @@ TIME_KEYWORDS = [
 DEFAULT_CRITERIA: Dict[str, str] = {
     "conversational": "Conversación informal, charla, respuestas teóricas, saludos o explicaciones conceptuales sin datos de última hora ni reportes.",
     "datetime": "Preguntas exclusivas sobre qué hora es, qué día es hoy, la fecha actual o zona horaria.",
-    "desktop_and_apps": "Escritorio Hyprland y aplicaciones: hacer capturas de pantalla o inspeccionar visualmente lo que se ve en pantalla o ventanas (e.g. captura la pantalla, echa un vistazo a la pantalla, mira este error que sale en pantalla), abrir o lanzar aplicaciones o archivos (e.g. abrir cartera.ods con libreoffice, abre chrome, lanza kitty, confirmación afirmativa del usuario como 'si' para abrir o ver un archivo), reproducir música o canciones (reproduce pura dinamita), cerrar ventanas, alternar ventanas flotantes (flota chrome) o cambiar de workspace.",
+    "desktop_and_apps": "Escritorio Hyprland, webcam y aplicaciones: modo vigilancia por cámara web para detectar personas, mascotas o eventos (e.g. ponte en modo vigilancia, avísame si ves una persona, vigila la cámara, desactiva vigilancia), hacer capturas de pantalla o inspeccionar visualmente lo que se ve en pantalla o ventanas (e.g. captura la pantalla, echa un vistazo a la pantalla, mira este error que sale en pantalla), abrir o lanzar aplicaciones o archivos (e.g. abrir cartera.ods con libreoffice, abre chrome, lanza kitty, confirmación afirmativa del usuario como 'si' para abrir o ver un archivo), reproducir música o canciones (reproduce pura dinamita), cerrar ventanas, alternar ventanas flotantes (flota chrome) o cambiar de workspace.",
     "filesystem": "Operaciones con archivos y terminal: buscar archivos en el disco (/home, extensiones .ods, .pdf), listar carpetas (lista canciones en descargas/Downloads), leer o escribir archivos, o ejecutar comandos bash.",
     "notes": "Buscar o leer notas en la aplicación Obsidian.",
     "weather": "Previsión del tiempo, lluvia, viento, nieve, temperatura o clima meteorológico en ciudades o regiones (e.g. qué tiempo hará en León, lloverá mañana, si puedo ir en bici, moto o pasear según el clima, qué ropa ponerme). No elegir para eventos, cine, compras o lugares de ocio.",

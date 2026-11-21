@@ -175,6 +175,7 @@
                       pkgs.maim
                       pkgs.xdotool
                       pkgs.wmctrl
+                      pkgs.ffmpeg-headless
                       pythonEnv
                     ]
                   }:$out/bin"
@@ -193,6 +194,8 @@
                       pkgs.grim
                       pkgs.maim
                       pkgs.xdotool
+                      pkgs.ffmpeg-headless
+                      pkgs.libnotify
                       pkgs.jq
                       pythonEnv
                     ]
