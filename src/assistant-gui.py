@@ -35,7 +35,7 @@ _ensure_glib_schemas()
 from PyQt6.QtWidgets import QApplication, QSystemTrayIcon, QMenu, QFileDialog
 from PyQt6.QtGui import QIcon, QPixmap, QPainter, QColor, QFont, QAction, QPainterPath
 from PyQt6.QtQml import QQmlApplicationEngine
-from PyQt6.QtCore import Qt, QTimer, pyqtSignal, pyqtSlot, QThread, QObject, QUrl
+from PyQt6.QtCore import Qt, QTimer, pyqtSignal, pyqtSlot, QThread, QObject, QUrl, QMetaObject
 
 import openai
 from openai import OpenAI, Timeout
