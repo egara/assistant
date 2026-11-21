@@ -63,6 +63,121 @@ SAFE_COMMANDS: List[str] = [
 ]
 
 
+def extract_raw_tool_calls(
+    full_content: str,
+) -> Tuple[List[Dict[str, Any]], str]:
+    """Parse raw pseudo-XML, fenced JSON, or raw JSON tool invocations emitted as text.
+
+    Returns a tuple ``(tool_calls_list, clean_display_text)``.
+    """
+    tool_calls: List[Dict[str, Any]] = []
+    clean_display = full_content
+
+    # Pattern 1: Pseudo-XML format: <|tool_call>call:func_name(...)<tool_call|>
+    if "<|tool_call>" in full_content:
+        raw_call_match = re.search(
+            r"<\|tool_call>.*?call:([a-zA-Z0-9_]+)(?:\((.*?)\)|\{(.*?)\})?.*?<tool_call\|>",
+            full_content,
+            re.DOTALL,
+        )
+        if raw_call_match:
+            parsed_name = raw_call_match.group(1).strip()
+            parsed_arg_str = (
+                raw_call_match.group(2) or raw_call_match.group(3) or ""
+            ).strip()
+            parsed_args: Dict[str, Any] = {}
+            if parsed_arg_str:
+                if parsed_arg_str.startswith("{") and parsed_arg_str.endswith("}"):
+                    try:
+                        parsed_args = json.loads(parsed_arg_str)
+                    except Exception:
+                        pass
+                if not parsed_args:
+                    try:
+                        parsed_args = json.loads("{" + parsed_arg_str + "}")
+                    except Exception:
+                        try:
+                            expr = ast.parse(f"func({parsed_arg_str})")
+                            for kw in expr.body[0].value.keywords:
+                                parsed_args[kw.arg] = ast.literal_eval(kw.value)
+                        except Exception as pe:
+                            logger.error(
+                                f"[Tool Parser] Error parsing raw args '{parsed_arg_str}': {pe}"
+                            )
+
+            tool_calls.append({
+                "id": f"call_raw_{int(time.time())}",
+                "type": "function",
+                "function": {
+                    "name": parsed_name,
+                    "arguments": json.dumps(parsed_args),
+                },
+            })
+            clean_display = re.sub(
+                r"<\|tool_call>.*?<tool_call\|>", "", full_content, flags=re.DOTALL
+            ).strip()
+            return tool_calls, clean_display
+
+    # Pattern 2: Fenced or raw JSON tool call block
+    json_candidate = None
+    sub_target = None
+    fenced_match = re.search(
+        r"```(?:json)?\s*(\{\s*[\"'](?:name|tool|function)[\"'].*?\})\s*```",
+        full_content,
+        re.DOTALL,
+    )
+    if fenced_match:
+        json_candidate = fenced_match.group(1)
+        sub_target = fenced_match.group(0)
+    else:
+        stripped = full_content.strip()
+        has_key = any(
+            f'"{k}"' in stripped or f"'{k}'" in stripped
+            for k in ("name", "tool", "function")
+        )
+        if stripped.startswith("{") and stripped.endswith("}") and has_key:
+            json_candidate = stripped
+            sub_target = stripped
+
+    if json_candidate:
+        try:
+            data = json.loads(json_candidate)
+            name = data.get("name") or data.get("tool") or data.get("function")
+            if name and isinstance(name, str):
+                args = (
+                    data.get("arguments")
+                    or data.get("parameters")
+                    or data.get("args")
+                )
+                if args is None:
+                    args = {
+                        k: v
+                        for k, v in data.items()
+                        if k not in ("name", "tool", "function")
+                    }
+                if isinstance(args, str):
+                    try:
+                        args = json.loads(args)
+                    except Exception:
+                        args = {}
+                elif not isinstance(args, dict):
+                    args = {}
+                tool_calls.append({
+                    "id": f"call_raw_{int(time.time())}",
+                    "type": "function",
+                    "function": {
+                        "name": name,
+                        "arguments": json.dumps(args),
+                    },
+                })
+                clean_display = full_content.replace(sub_target, "").strip()
+                return tool_calls, clean_display
+        except Exception as pe:
+            logger.debug(f"[Tool Parser] Non-tool JSON block ignored: {pe}")
+
+    return tool_calls, clean_display
+
+
 def extract_reasoning(delta: Any) -> Optional[str]:
     """Extract reasoning_content from a streaming delta, when present."""
     extra = getattr(delta, "model_extra", None)
@@ -221,6 +336,11 @@ class AIGeneratorThread(QThread):
                 created_bubble = False
                 in_reasoning_block = False
 
+                # Buffer initial characters to suppress raw tool invocations (JSON/pseudo-XML) from appearing in the GUI
+                buffered_prefix = ""
+                is_buffering = True
+                candidate_prefixes = ("<|tool_call", "```", "{\n", "{\"", "{ '", '{"', "{")
+
                 for chunk in response:
                     if self._is_stopped:
                         break
@@ -244,11 +364,35 @@ class AIGeneratorThread(QThread):
                         if in_reasoning_block:
                             in_reasoning_block = False
                             self.status_signal.emit("󰟷 Thinking...", "#59c2ff")
-                        if not created_bubble:
-                            self.new_bubble_signal.emit("ai", "")
-                            created_bubble = True
                         full_content += delta.content
-                        self.append_text_signal.emit(delta.content)
+
+                        if is_buffering:
+                            buffered_prefix += delta.content
+                            stripped_buf = buffered_prefix.lstrip()
+                            if not stripped_buf:
+                                continue
+
+                            matches_prefix = any(
+                                stripped_buf.startswith(p) or p.startswith(stripped_buf)
+                                for p in candidate_prefixes
+                            )
+                            if matches_prefix:
+                                if len(stripped_buf) > 300:
+                                    is_buffering = False
+                                    if not created_bubble:
+                                        self.new_bubble_signal.emit("ai", "")
+                                        created_bubble = True
+                                    self.append_text_signal.emit(buffered_prefix)
+                                    buffered_prefix = ""
+                            else:
+                                is_buffering = False
+                                if not created_bubble:
+                                    self.new_bubble_signal.emit("ai", "")
+                                    created_bubble = True
+                                self.append_text_signal.emit(buffered_prefix)
+                                buffered_prefix = ""
+                        else:
+                            self.append_text_signal.emit(delta.content)
 
                     if delta.tool_calls:
                         for tc in delta.tool_calls:
@@ -277,44 +421,20 @@ class AIGeneratorThread(QThread):
                         f"({len(full_reasoning)} chars): {full_reasoning[:300]!r}"
                     )
 
-                # Fallback parser for pseudo-XML tool calls
-                if not tool_calls and "<|tool_call>" in full_content:
-                    raw_call_match = re.search(
-                        r"<\|tool_call>.*?call:([a-zA-Z0-9_]+)(?:[\(\{](.*?)[\)\}])?.*?<tool_call\|>",
-                        full_content,
-                        re.DOTALL
-                    )
-                    if raw_call_match:
-                        parsed_name = raw_call_match.group(1).strip()
-                        parsed_arg_str = (raw_call_match.group(2) or "").strip()
-                        parsed_args = {}
-                        if parsed_arg_str:
-                            if parsed_arg_str.startswith("{") and parsed_arg_str.endswith("}"):
-                                try:
-                                    parsed_args = json.loads(parsed_arg_str)
-                                except Exception:
-                                    pass
-                            if not parsed_args:
-                                try:
-                                    parsed_args = json.loads("{" + parsed_arg_str + "}")
-                                except Exception:
-                                    try:
-                                        expr = ast.parse(f"func({parsed_arg_str})")
-                                        for kw in expr.body[0].value.keywords:
-                                            parsed_args[kw.arg] = ast.literal_eval(kw.value)
-                                    except Exception as pe:
-                                        logger.error(f"[Tool Parser] Error parsing raw args '{parsed_arg_str}': {pe}")
-
-                        tool_calls.append({
-                            "id": f"call_raw_{int(time.time())}",
-                            "type": "function",
-                            "function": {
-                                "name": parsed_name,
-                                "arguments": json.dumps(parsed_args),
-                            },
-                        })
-                        clean_display = re.sub(r"<\|tool_call>.*?<tool_call\|>", "", full_content, flags=re.DOTALL).strip()
+                # Fallback parser for pseudo-XML and raw/fenced JSON tool calls
+                if not tool_calls:
+                    parsed_raw_tools, clean_display = extract_raw_tool_calls(full_content)
+                    if parsed_raw_tools:
+                        tool_calls.extend(parsed_raw_tools)
                         full_content = clean_display
+
+                # Flush any leftover buffered text if no tool calls were detected
+                if not tool_calls and buffered_prefix:
+                    if not created_bubble:
+                        self.new_bubble_signal.emit("ai", "")
+                        created_bubble = True
+                    self.append_text_signal.emit(buffered_prefix)
+                    buffered_prefix = ""
 
                 if not tool_calls:
                     if full_content.strip():
