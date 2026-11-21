@@ -32,6 +32,12 @@ def _ensure_glib_schemas():
 
 _ensure_glib_schemas()
 
+try:
+    import pypdf
+    PYPDF_AVAILABLE = True
+except ImportError:
+    PYPDF_AVAILABLE = False
+
 from PyQt6.QtWidgets import QApplication, QSystemTrayIcon, QMenu, QFileDialog
 from PyQt6.QtGui import QIcon, QPixmap, QPainter, QColor, QFont, QAction, QPainterPath
 from PyQt6.QtQml import QQmlApplicationEngine
@@ -179,13 +185,83 @@ def resolve_tools_for_query(user_query, recent_context="", base_url=""):
     )
 
 
+def _extract_pdf_text_and_forms(file_path):
+    """
+    Extract readable text and interactive form fields from a PDF file using pypdf.
+    Returns (content_text, error_message).
+    """
+    if not PYPDF_AVAILABLE:
+        return "", "pypdf library is not installed in the environment."
+
+    try:
+        reader = pypdf.PdfReader(file_path)
+        sections = []
+
+        # 1. Extract plain text page by page
+        page_chunks = []
+        for idx, page in enumerate(reader.pages):
+            text = (page.extract_text() or "").strip()
+            if text:
+                page_chunks.append(f"--- Page {idx + 1} ---\n{text}")
+
+        if page_chunks:
+            sections.append("\n\n".join(page_chunks))
+
+        # 2. Extract interactive form fields if present
+        form_entries = []
+        try:
+            fields = reader.get_fields()
+            if fields:
+                for field_name, field_data in fields.items():
+                    val = getattr(field_data, "value", None)
+                    if val is not None:
+                        val_str = str(val).strip()
+                        # Clean up NameObject slashes (e.g. /Yes -> Yes)
+                        if hasattr(val, "name") or (isinstance(val_str, str) and val_str.startswith("/")):
+                            val_str = val_str.lstrip("/")
+                        if val_str:
+                            alt = getattr(field_data, "alternate_name", None)
+                            label = f"{alt} ({field_name})" if alt and alt != field_name else field_name
+                            form_entries.append(f"- {label}: {val_str}")
+        except Exception as fe:
+            logger.debug(f"Failed extracting form fields from {file_path}: {fe}")
+
+        if form_entries:
+            sections.append("--- PDF Form Fields & Inputs ---\n" + "\n".join(form_entries))
+
+        extracted_body = "\n\n".join(sections).strip()
+        return extracted_body, None
+    except Exception as e:
+        logger.warning(f"Failed to read PDF attachment {file_path}: {e}")
+        return "", str(e)
+
+
+def _extract_text_file(file_path):
+    """
+    Extract text from a plain text or markdown document with encoding fallbacks.
+    Returns (content_text, error_message).
+    """
+    encodings = ["utf-8", "latin-1", "cp1252"]
+    for enc in encodings:
+        try:
+            with open(file_path, "r", encoding=enc) as f:
+                return f.read(), None
+        except UnicodeDecodeError:
+            continue
+        except OSError as e:
+            return "", str(e)
+    return "", "Could not decode text file with supported encodings."
+
+
 def process_prompt(user_query, attached_files=None, vision_supported=True):
     """
     Format prompt into standard text or multimodal OpenAI payload.
-    Supports attached image files with base64 data URIs.
+    Supports attached image files with base64 data URIs, as well as PDF,
+    Markdown (.md), and plain text (.txt) document attachments.
     """
     attached_files = attached_files or []
     image_parts = []
+    document_parts = []
     non_image_notes = []
 
     # 1. Process files explicitly attached
@@ -195,6 +271,7 @@ def process_prompt(user_query, attached_files=None, vision_supported=True):
         mime_type, _ = mimetypes.guess_type(file_path)
         mime_type = mime_type or "application/octet-stream"
         file_name = os.path.basename(file_path)
+        _, ext = os.path.splitext(file_path.lower())
 
         if mime_type.startswith("image/"):
             if vision_supported:
@@ -211,8 +288,25 @@ def process_prompt(user_query, attached_files=None, vision_supported=True):
                     logger.warning(f"Failed to read image attachment {file_path}: {e}")
             else:
                 non_image_notes.append(f"[Attached Image: {file_name} (Vision disabled for current model)]")
+
+        elif ext == ".pdf" or mime_type == "application/pdf":
+            content, err = _extract_pdf_text_and_forms(file_path)
+            if content:
+                document_parts.append(f"### Attached Document: {file_name} (PDF)\n```\n{content}\n```")
+            else:
+                reason = f": {err}" if err else " (Empty content)"
+                non_image_notes.append(f"[Attached PDF: {file_name}{reason}]")
+
+        elif ext in [".txt", ".md", ".markdown"] or mime_type.startswith("text/"):
+            content, err = _extract_text_file(file_path)
+            if content:
+                doc_type = "Markdown" if ext in [".md", ".markdown"] else "Plain Text"
+                document_parts.append(f"### Attached Document: {file_name} ({doc_type})\n```\n{content}\n```")
+            else:
+                reason = f": {err}" if err else " (Empty file)"
+                non_image_notes.append(f"[Attached Document: {file_name}{reason}]")
+
         else:
-            # Future extension: text/pdf/docs attachments
             non_image_notes.append(f"[Attached File: {file_name} ({file_path})]")
 
     # 2. Legacy screenshot / clipboard syntax compatibility: [IMAGE PATH: ...]
@@ -236,11 +330,20 @@ def process_prompt(user_query, attached_files=None, vision_supported=True):
             non_image_notes.append("[SYSTEM: Image shared but Vision disabled.]")
 
     clean_query = user_query.replace("Regarding this screenshot:", "").strip()
+
+    # Append document bodies and metadata notes to prompt
+    combined_notes = []
+    if document_parts:
+        combined_notes.extend(document_parts)
     if non_image_notes:
+        combined_notes.extend(non_image_notes)
+
+    if combined_notes:
+        notes_text = "\n\n".join(combined_notes)
         if clean_query:
-            clean_query = clean_query + "\n\n" + "\n".join(non_image_notes)
+            clean_query = clean_query + "\n\n" + notes_text
         else:
-            clean_query = "\n".join(non_image_notes)
+            clean_query = notes_text
 
     if image_parts:
         final_text = clean_query if clean_query else "Please analyze the attached image(s) in detail."
@@ -468,7 +571,8 @@ class Backend(QObject):
             "- CRITICAL RULE FOR STOPPING SURVEILLANCE: When the user asks to stop, halt, disable, or cancel surveillance (e.g., 'para el modo vigilancia', 'para la vigilancia', 'detén la vigilancia', 'cancela la vigilancia', 'desactiva vigilancia', 'para la cámara', 'deja de vigilar', 'apaga la vigilancia'), "
             "you MUST immediately call `stop_surveillance()`. Do NOT call `start_surveillance()` or `get_surveillance_status()` when the user intends to stop or halt surveillance.\n"
             "- CRITICAL RULE FOR IMAGES & ATTACHMENTS: When an image is attached to the conversation or provided by a tool, inspect and analyze its visual content "
-            "directly to answer the user's inquiry.\n"
+            "directly to answer the user's inquiry. When documents (such as PDF files, form fields, Markdown notes, or text files) are attached, "
+            "their extracted text and form input data are included directly in the user turn; inspect and reference them thoroughly to answer the user's request.\n"
             "- Keep answers concise, natural, and conversational."
         )
 
@@ -623,11 +727,17 @@ class Backend(QObject):
     def selectFilesDialog(self):
         """Open system file picker to attach one or multiple files."""
         try:
+            filter_str = (
+                "Archivos compatibles (*.png *.jpg *.jpeg *.webp *.gif *.bmp *.pdf *.txt *.md *.markdown);;"
+                "Documentos (*.pdf *.txt *.md *.markdown);;"
+                "Imágenes (*.png *.jpg *.jpeg *.webp *.gif *.bmp);;"
+                "Todos los archivos (*)"
+            )
             files, _ = QFileDialog.getOpenFileNames(
                 None,
                 "Seleccionar archivos para adjuntar",
                 os.path.expanduser("~"),
-                "Todos los archivos (*)"
+                filter_str
             )
         except Exception as e:
             logger.error(f"Error opening file dialog: {e}")

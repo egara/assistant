@@ -45,7 +45,7 @@ fi
 echo -e "\n${YELLOW}[2/6] Setting up isolated Python environment and dependencies...${NC}"
 if [ ! -d "$VENV_DIR" ]; then python3 -m venv "$VENV_DIR"; fi
 "$VENV_DIR/bin/pip" install --upgrade pip
-"$VENV_DIR/bin/pip" install openai ddgs requests beautifulsoup4 edge-tts langdetect PyQt6 mcp
+"$VENV_DIR/bin/pip" install openai ddgs requests beautifulsoup4 edge-tts langdetect PyQt6 pypdf mcp
 
 echo -e "\n${YELLOW}[3/6] Setting up AI Audio Binaries...${NC}"
 if [ ! -f "$BIN_DIR/whisper-cli" ] || (command -v ldd >/dev/null && ldd "$BIN_DIR/whisper-cli" 2>&1 | grep -q "not found"); then

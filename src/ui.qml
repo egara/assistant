@@ -406,7 +406,13 @@ ApplicationWindow {
                                 spacing: 6
 
                                 Text {
-                                    text: "󰏫"
+                                    text: {
+                                        var ext = model.fileName.split('.').pop().toLowerCase();
+                                        if (ext === "pdf") return "󰈦";
+                                        if (ext === "txt" || ext === "md" || ext === "markdown") return "󰈙";
+                                        if (["png", "jpg", "jpeg", "webp", "gif", "bmp"].indexOf(ext) !== -1) return "󰋩";
+                                        return "󰏫";
+                                    }
                                     color: "#59c2ff"
                                     font.family: window.monoFont
                                     font.pixelSize: 12
