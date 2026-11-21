@@ -323,16 +323,26 @@ class Backend(QObject):
     def is_vision_supported(self) -> bool:
         return model_catalog_manager.is_vision_supported(self.active_model_key)
 
+    @pyqtSlot()
     def hide_window(self):
         """Temporarily hide window for screen operations if window is currently visible."""
         if hasattr(self, "tray_manager") and self.tray_manager and self.tray_manager.window:
             if self.tray_manager.window.isVisible():
                 self.tray_manager.window.hide()
 
+    @pyqtSlot()
     def show_window(self):
         """Restore window visibility after screen operations."""
         if hasattr(self, "tray_manager") and self.tray_manager:
             self.tray_manager.show_window()
+
+    def request_hide_window(self):
+        """Thread-safe request to hide window via Qt queued event loop."""
+        QMetaObject.invokeMethod(self, "hide_window", Qt.ConnectionType.QueuedConnection)
+
+    def request_show_window(self):
+        """Thread-safe request to show window via Qt queued event loop."""
+        QMetaObject.invokeMethod(self, "show_window", Qt.ConnectionType.QueuedConnection)
 
     @property
     def active_model_key(self) -> str:
@@ -947,8 +957,8 @@ class Backend(QObject):
             mcp_manager=mcp_manager,
             command_intents=COMMAND_INTENTS,
             resolve_tools_fn=resolve_tools_for_query,
-            hide_window_callback=self.hide_window,
-            show_window_callback=self.show_window,
+            hide_window_callback=self.request_hide_window,
+            show_window_callback=self.request_show_window,
         )
         self.ai_thread.status_signal.connect(self.statusChanged.emit)
         self.ai_thread.active_model_signal.connect(self.activeModelChanged.emit)
