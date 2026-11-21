@@ -152,6 +152,8 @@ class SurveillanceManager:
         self.stop_event = threading.Event()
         self.frames_analyzed = 0
         self.triggers_detected = 0
+        self.last_trigger_time: float = 0.0
+        self.trigger_cooldown: float = 10.0
         self.start_time: float = 0.0
         self.model_client: Optional[Any] = None
         self.model_name: Optional[str] = None
@@ -195,6 +197,7 @@ class SurveillanceManager:
         self.device = device
         self.frames_analyzed = 0
         self.triggers_detected = 0
+        self.last_trigger_time = 0.0
         self.start_time = time.time()
         self.stop_event.clear()
         self.is_active = True
@@ -251,27 +254,28 @@ class SurveillanceManager:
                 self.frames_analyzed += 1
                 try:
                     is_triggered, description = self._analyze_frame(frame_path)
+                    now = time.time()
                     if is_triggered:
                         self.triggers_detected += 1
-                        saved_path = ""
-                        if "save" in self.action:
-                            filename = f"vigilancia_{int(time.time())}.jpg"
-                            saved_path = os.path.join(downloads_dir, filename)
-                            try:
-                                shutil.copy2(frame_path, saved_path)
-                            except OSError as e:
-                                logger.error(f"Failed to copy frame to Downloads: {e}")
-                                saved_path = frame_path
+                        # Only dispatch notifications and save snapshots if cooldown elapsed
+                        if (now - self.last_trigger_time) >= self.trigger_cooldown:
+                            self.last_trigger_time = now
+                            saved_path = ""
+                            if "save" in self.action:
+                                filename = f"vigilancia_{int(now)}.jpg"
+                                saved_path = os.path.join(downloads_dir, filename)
+                                try:
+                                    shutil.copy2(frame_path, saved_path)
+                                except OSError as e:
+                                    logger.error(f"Failed to copy frame to Downloads: {e}")
+                                    saved_path = frame_path
 
-                        self._notify_trigger(description, saved_path)
-                        # After triggering, stop surveillance automatically or wait
-                        self.is_active = False
-                        self.stop_event.set()
-                        try:
-                            os.remove(frame_path)
-                        except OSError:
-                            pass
-                        break
+                            self._notify_trigger(description, saved_path)
+                        else:
+                            logger.info(
+                                f"Trigger active ({description}) but suppressed by cooldown "
+                                f"({int(now - self.last_trigger_time)}s < {self.trigger_cooldown}s)"
+                            )
                 except Exception as e:
                     logger.error(f"Surveillance vision analysis error: {e}")
                 finally:
