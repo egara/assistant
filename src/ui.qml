@@ -27,8 +27,28 @@ ApplicationWindow {
     property bool isTtsActive: false
     property bool isVisionSupported: true
     property bool isSurveillanceActive: false
+    property string activeReasoningEffort: "medium"
+    property bool isReasoningSupported: false
     readonly property string monoFont: "JetBrainsMono Nerd Font Mono"
     readonly property int systemFontSize: window.font.pixelSize > 0 ? window.font.pixelSize : (window.font.pointSize > 0 ? Math.round(window.font.pointSize * 1.33) : 14)
+
+    function getReasoningLabel(effort) {
+        if (!isReasoningSupported) {
+            return "󰟷 N/A";
+        }
+        switch (effort) {
+            case "none":
+                return "󰟷 Off";
+            case "low":
+                return "󰟷 Bajo";
+            case "medium":
+                return "󰟷 Medio";
+            case "high":
+                return "󰟷 Alto";
+            default:
+                return "󰟷 " + effort;
+        }
+    }
 
     ListModel {
         id: modelsModel
@@ -46,6 +66,12 @@ ApplicationWindow {
         target: backend
         function onActiveModelChanged(modelName) {
             modelLabel.text = modelName;
+        }
+        function onActiveReasoningChanged(effort) {
+            activeReasoningEffort = effort;
+        }
+        function onReasoningSupportedChanged(supported) {
+            isReasoningSupported = supported;
         }
         function onAvailableModelsChanged(modelsList) {
             modelsModel.clear();
@@ -674,17 +700,21 @@ ApplicationWindow {
             }
         }
 
-        // Active Model Pill Badge (Clickable Dropdown)
-        Rectangle {
-            id: modelBadge
-            visible: modelLabel.text !== ""
+        // Model and Reasoning Selection Badges Row
+        Row {
             Layout.alignment: Qt.AlignHCenter
-            height: 24
-            radius: 12
-            color: badgeMouseArea.containsMouse ? "#1c2230" : "#141822"
-            border.color: badgeMouseArea.containsMouse ? "#59c2ff" : "#232a38"
-            border.width: 1
-            implicitWidth: badgeRow.implicitWidth + 24
+            spacing: 8
+            visible: modelLabel.text !== ""
+
+            // Active Model Pill Badge (Clickable Dropdown)
+            Rectangle {
+                id: modelBadge
+                height: 24
+                radius: 12
+                color: badgeMouseArea.containsMouse ? "#1c2230" : "#141822"
+                border.color: badgeMouseArea.containsMouse ? "#59c2ff" : "#232a38"
+                border.width: 1
+                implicitWidth: badgeRow.implicitWidth + 24
 
             Row {
                 id: badgeRow
@@ -886,7 +916,7 @@ ApplicationWindow {
                             }
 
                             Text {
-                                text: "About (v1.3.0)"
+                                text: "About (v1.4.0)"
                                 color: "#828c99"
                                 font.family: window.monoFont
                                 font.pixelSize: 11
@@ -908,5 +938,283 @@ ApplicationWindow {
                 }
             }
         }
+
+        // Active Reasoning Pill Badge (Clickable Dropdown)
+        Rectangle {
+            id: reasoningBadge
+            height: 24
+            radius: 12
+            color: !isReasoningSupported ? "#12151c" : (reasoningMouseArea.containsMouse ? "#1c2230" : "#141822")
+            border.color: !isReasoningSupported ? "#1e2430" : (reasoningMouseArea.containsMouse ? "#59c2ff" : (activeReasoningEffort !== "none" ? "#2f4868" : "#232a38"))
+            border.width: 1
+            implicitWidth: reasoningRow.implicitWidth + 24
+            opacity: isReasoningSupported ? 1.0 : 0.65
+
+            Row {
+                id: reasoningRow
+                anchors.centerIn: parent
+                spacing: 6
+
+                Label {
+                    id: reasoningLabel
+                    text: getReasoningLabel(activeReasoningEffort)
+                    color: !isReasoningSupported ? "#4a5568" : (reasoningMouseArea.containsMouse ? "#a6b3c2" : (activeReasoningEffort !== "none" ? "#59c2ff" : "#606b7a"))
+                    font.family: window.monoFont
+                    font.pixelSize: 11
+                    font.bold: isReasoningSupported && activeReasoningEffort !== "none"
+                    anchors.verticalCenter: parent.verticalCenter
+                }
+
+                Label {
+                    visible: isReasoningSupported
+                    text: "▾"
+                    color: reasoningMouseArea.containsMouse ? "#59c2ff" : "#606b7a"
+                    font.family: window.monoFont
+                    font.pixelSize: 10
+                    anchors.verticalCenter: parent.verticalCenter
+                }
+            }
+
+            ToolTip.visible: reasoningMouseArea.containsMouse
+            ToolTip.text: !isReasoningSupported ? "El modelo activo no soporta modo de razonamiento / thinking" : "Nivel de razonamiento (thinking): " + activeReasoningEffort
+
+            MouseArea {
+                id: reasoningMouseArea
+                anchors.fill: parent
+                hoverEnabled: true
+                cursorShape: isReasoningSupported ? Qt.PointingHandCursor : Qt.ArrowCursor
+                onClicked: {
+                    if (!isReasoningSupported) return;
+                    if (reasoningPopup.visible) {
+                        reasoningPopup.close();
+                    } else {
+                        reasoningPopup.open();
+                    }
+                }
+            }
+
+            Popup {
+                id: reasoningPopup
+                y: -height - 6
+                x: (parent.width - width) / 2
+                width: 240
+                padding: 6
+                closePolicy: Popup.CloseOnEscape | Popup.CloseOnPressOutsideParent
+
+                background: Rectangle {
+                    color: "#141822"
+                    radius: 12
+                    border.color: "#283446"
+                    border.width: 1
+                }
+
+                contentItem: Column {
+                    spacing: 4
+
+                    Text {
+                        text: "󰟷 Modo de Razonamiento"
+                        color: "#59c2ff"
+                        font.family: window.monoFont
+                        font.pixelSize: 12
+                        font.bold: true
+                        leftPadding: 8
+                        topPadding: 4
+                        bottomPadding: 4
+                    }
+
+                    Rectangle {
+                        width: parent.width
+                        height: 1
+                        color: "#232a38"
+                    }
+
+                    Column {
+                        width: parent.width
+                        spacing: 3
+
+                        // Option 1: Desactivado (none)
+                        Rectangle {
+                            width: parent.width
+                            height: 32
+                            radius: 8
+                            color: optNoneMouse.containsMouse ? "#1e2638" : (activeReasoningEffort === "none" ? "#192230" : "transparent")
+
+                            Row {
+                                anchors.fill: parent
+                                anchors.leftMargin: 10
+                                anchors.rightMargin: 10
+                                spacing: 8
+
+                                Text {
+                                    text: activeReasoningEffort === "none" ? "●" : "○"
+                                    color: activeReasoningEffort === "none" ? "#7fd962" : "#606b7a"
+                                    font.family: window.monoFont
+                                    font.pixelSize: 11
+                                    anchors.verticalCenter: parent.verticalCenter
+                                }
+
+                                Column {
+                                    anchors.verticalCenter: parent.verticalCenter
+                                    Text {
+                                        text: "Desactivado (none)"
+                                        color: activeReasoningEffort === "none" ? "#ffffff" : "#a6b3c2"
+                                        font.family: window.monoFont
+                                        font.pixelSize: 12
+                                        font.bold: activeReasoningEffort === "none"
+                                    }
+                                }
+                            }
+
+                            MouseArea {
+                                id: optNoneMouse
+                                anchors.fill: parent
+                                hoverEnabled: true
+                                cursorShape: Qt.PointingHandCursor
+                                onClicked: {
+                                    backend.switch_reasoning("none");
+                                    reasoningPopup.close();
+                                }
+                            }
+                        }
+
+                        // Option 2: Bajo (low)
+                        Rectangle {
+                            width: parent.width
+                            height: 32
+                            radius: 8
+                            color: optLowMouse.containsMouse ? "#1e2638" : (activeReasoningEffort === "low" ? "#192230" : "transparent")
+
+                            Row {
+                                anchors.fill: parent
+                                anchors.leftMargin: 10
+                                anchors.rightMargin: 10
+                                spacing: 8
+
+                                Text {
+                                    text: activeReasoningEffort === "low" ? "●" : "○"
+                                    color: activeReasoningEffort === "low" ? "#7fd962" : "#606b7a"
+                                    font.family: window.monoFont
+                                    font.pixelSize: 11
+                                    anchors.verticalCenter: parent.verticalCenter
+                                }
+
+                                Column {
+                                    anchors.verticalCenter: parent.verticalCenter
+                                    Text {
+                                        text: "Bajo (low)"
+                                        color: activeReasoningEffort === "low" ? "#ffffff" : "#a6b3c2"
+                                        font.family: window.monoFont
+                                        font.pixelSize: 12
+                                        font.bold: activeReasoningEffort === "low"
+                                    }
+                                }
+                            }
+
+                            MouseArea {
+                                id: optLowMouse
+                                anchors.fill: parent
+                                hoverEnabled: true
+                                cursorShape: Qt.PointingHandCursor
+                                onClicked: {
+                                    backend.switch_reasoning("low");
+                                    reasoningPopup.close();
+                                }
+                            }
+                        }
+
+                        // Option 3: Medio (medium)
+                        Rectangle {
+                            width: parent.width
+                            height: 32
+                            radius: 8
+                            color: optMedMouse.containsMouse ? "#1e2638" : (activeReasoningEffort === "medium" ? "#192230" : "transparent")
+
+                            Row {
+                                anchors.fill: parent
+                                anchors.leftMargin: 10
+                                anchors.rightMargin: 10
+                                spacing: 8
+
+                                Text {
+                                    text: activeReasoningEffort === "medium" ? "●" : "○"
+                                    color: activeReasoningEffort === "medium" ? "#7fd962" : "#606b7a"
+                                    font.family: window.monoFont
+                                    font.pixelSize: 11
+                                    anchors.verticalCenter: parent.verticalCenter
+                                }
+
+                                Column {
+                                    anchors.verticalCenter: parent.verticalCenter
+                                    Text {
+                                        text: "Medio (medium)"
+                                        color: activeReasoningEffort === "medium" ? "#ffffff" : "#a6b3c2"
+                                        font.family: window.monoFont
+                                        font.pixelSize: 12
+                                        font.bold: activeReasoningEffort === "medium"
+                                    }
+                                }
+                            }
+
+                            MouseArea {
+                                id: optMedMouse
+                                anchors.fill: parent
+                                hoverEnabled: true
+                                cursorShape: Qt.PointingHandCursor
+                                onClicked: {
+                                    backend.switch_reasoning("medium");
+                                    reasoningPopup.close();
+                                }
+                            }
+                        }
+
+                        // Option 4: Alto (high)
+                        Rectangle {
+                            width: parent.width
+                            height: 32
+                            radius: 8
+                            color: optHighMouse.containsMouse ? "#1e2638" : (activeReasoningEffort === "high" ? "#192230" : "transparent")
+
+                            Row {
+                                anchors.fill: parent
+                                anchors.leftMargin: 10
+                                anchors.rightMargin: 10
+                                spacing: 8
+
+                                Text {
+                                    text: activeReasoningEffort === "high" ? "●" : "○"
+                                    color: activeReasoningEffort === "high" ? "#7fd962" : "#606b7a"
+                                    font.family: window.monoFont
+                                    font.pixelSize: 11
+                                    anchors.verticalCenter: parent.verticalCenter
+                                }
+
+                                Column {
+                                    anchors.verticalCenter: parent.verticalCenter
+                                    Text {
+                                        text: "Alto (high)"
+                                        color: activeReasoningEffort === "high" ? "#ffffff" : "#a6b3c2"
+                                        font.family: window.monoFont
+                                        font.pixelSize: 12
+                                        font.bold: activeReasoningEffort === "high"
+                                    }
+                                }
+                            }
+
+                            MouseArea {
+                                id: optHighMouse
+                                anchors.fill: parent
+                                hoverEnabled: true
+                                cursorShape: Qt.PointingHandCursor
+                                onClicked: {
+                                    backend.switch_reasoning("high");
+                                    reasoningPopup.close();
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        }
     }
+}
 }

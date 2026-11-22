@@ -39,7 +39,7 @@ class PropertiesManager:
         if getattr(self, "_initialized", False):
             return
 
-        self.version = "1.3.0"
+        self.version = "1.4.0"
         self._listeners: Dict[str, List[Callable[[Any], None]]] = {}
 
         # 1. Base Directories & XDG Paths
@@ -88,6 +88,12 @@ class PropertiesManager:
         # Default model initialization from config if present
         default_model = self.get("llm.default_model") or self.get("llm.model", "")
         self.active_model_key = str(default_model)
+
+        # Default reasoning effort initialization from config if present (defaults to "none" for maximum speed)
+        default_reasoning = self.get("llm.reasoning_effort") or self.get("llm.reasoning", "none")
+        self.active_reasoning_effort = str(default_reasoning).strip().lower()
+        if self.active_reasoning_effort not in ("none", "low", "medium", "high"):
+            self.active_reasoning_effort = "none"
 
         # 6. Configure Rotating File Logger
         self._setup_logger()
@@ -302,6 +308,14 @@ class PropertiesManager:
     def set_active_model_key(self, key: str) -> None:
         self.active_model_key = key
         self._notify_listeners("active_model_key", key)
+
+    def set_active_reasoning_effort(self, effort: str) -> bool:
+        clean = str(effort).strip().lower()
+        if clean in ("none", "low", "medium", "high"):
+            self.active_reasoning_effort = clean
+            self._notify_listeners("active_reasoning_effort", clean)
+            return True
+        return False
 
     def set_tts_enabled(self, enabled: bool) -> None:
         self.tts_enabled = enabled

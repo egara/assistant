@@ -31,15 +31,29 @@ CONFIG_DIR="$HOME/.config/assistant"
 mkdir -p "$BIN_DIR" "$MODELS_DIR" "$SOUNDS_DIR" "$LIB_DIR" "$LOCAL_BIN" "$CONFIG_DIR"
 
 echo -e "\n${YELLOW}[1/6] Detecting OS and installing system dependencies...${NC}"
-if [ -f /etc/os-release ]; then . /etc/os-release; OS=$ID; OS_LIKE=$ID_LIKE; else exit 1; fi
+if [ -f /etc/os-release ]; then
+    . /etc/os-release
+    OS=$ID
+    OS_LIKE=$ID_LIKE
+else
+    echo -e "${RED}Cannot detect OS (/etc/os-release missing). Installation aborted.${NC}"
+    exit 1
+fi
 
-if [[ "$OS" == "arch" || "$OS_LIKE" == *"arch"* ]]; then
-    sudo pacman -Syu --needed --noconfirm sox jq pipewire pipewire-pulse wl-clipboard grim playerctl python python-virtualenv wget curl base-devel git xclip maim xdotool wmctrl cmake xcb-util-cursor ffmpeg libnotify
+if [[ "$OS" == "arch" || "$OS_LIKE" == *"arch"* || "$OS" == "manjaro" || "$OS" == "endeavouros" || "$OS" == "cachyos" || "$OS" == "garuda" || "$OS" == "artix" || "$OS" == "omarchy" || -f /etc/arch-release ]] || command -v pacman >/dev/null 2>&1; then
+    echo -e "${BLUE}Detected Arch Linux / Arch-based distribution.${NC}"
+    sudo pacman -Syu --needed --noconfirm sox libpulse wireplumber jq pipewire pipewire-pulse wl-clipboard grim playerctl python python-pip python-virtualenv wget curl base-devel git xclip maim xdotool wmctrl cmake xcb-util-cursor ffmpeg libnotify
 elif [[ "$OS" == "ubuntu" || "$OS" == "debian" || "$OS_LIKE" == *"debian"* || "$OS_LIKE" == *"ubuntu"* ]]; then
+    echo -e "${BLUE}Detected Debian / Ubuntu distribution.${NC}"
     sudo apt-get update
-    sudo apt-get install -y sox libsox-fmt-all jq pipewire-bin wl-clipboard grim playerctl python3-venv wget curl build-essential git xclip maim xdotool wmctrl cmake libxcb-cursor0 ffmpeg libnotify-bin
+    sudo apt-get install -y sox libsox-fmt-all jq pipewire-bin wl-clipboard grim playerctl python3-venv python3-pip wget curl build-essential git xclip maim xdotool wmctrl cmake libxcb-cursor0 ffmpeg libnotify-bin
 elif [[ "$OS" == "fedora" || "$OS_LIKE" == *"fedora"* ]]; then
-    sudo dnf install -y sox jq pipewire-utils wl-clipboard grim playerctl python3-virtualenv wget curl make automake gcc gcc-c++ git xclip maim xdotool wmctrl cmake xcb-util-cursor ffmpeg libnotify
+    echo -e "${BLUE}Detected Fedora distribution.${NC}"
+    sudo dnf install -y sox jq pipewire-utils wl-clipboard grim playerctl python3-virtualenv python3-pip wget curl make automake gcc gcc-c++ git xclip maim xdotool wmctrl cmake xcb-util-cursor ffmpeg libnotify
+else
+    echo -e "${RED}Unsupported Linux distribution: OS=$OS, OS_LIKE=$OS_LIKE.${NC}"
+    echo -e "${YELLOW}Please install the required dependencies manually and retry.${NC}"
+    exit 1
 fi
 
 echo -e "\n${YELLOW}[2/6] Setting up isolated Python environment and dependencies...${NC}"
@@ -57,7 +71,14 @@ if [ ! -f "$BIN_DIR/whisper-cli" ] || (command -v ldd >/dev/null && ldd "$BIN_DI
     cmake -B build -DBUILD_SHARED_LIBS=OFF
     cmake --build build --config Release -j$(nproc) || true
     
-    WHISPER_BIN=$(find . -type f \( -name "whisper-cli" -o -name "main" \) -executable | head -n 1)
+    WHISPER_BIN=""
+    if [ -f "build/bin/whisper-cli" ]; then
+        WHISPER_BIN="build/bin/whisper-cli"
+    elif [ -f "build/bin/main" ]; then
+        WHISPER_BIN="build/bin/main"
+    else
+        WHISPER_BIN=$(find . -type f \( -name "whisper-cli" -o -name "main" \) -executable | head -n 1)
+    fi
     
     if [ -n "$WHISPER_BIN" ]; then
         cp "$WHISPER_BIN" "$BIN_DIR/whisper-cli"
@@ -225,6 +246,9 @@ fi
 if [ -d "$REPO_DIR/src/roles" ]; then
     mkdir -p "$SHARE_DIR/roles" "$CONFIG_DIR/roles"
     cp -r "$REPO_DIR/src/roles"/* "$SHARE_DIR/roles/"
+    if [ -f "$REPO_DIR/src/roles/default.md" ] && [ ! -f "$CONFIG_DIR/roles/default.md" ]; then
+        cp "$REPO_DIR/src/roles/default.md" "$CONFIG_DIR/roles/default.md"
+    fi
 fi
 
 # 6. Install full Python package modules into $SHARE_DIR/lib
@@ -243,6 +267,11 @@ if [ -f "$REPO_DIR/src/hyprland_knowledge.json" ]; then cp "$REPO_DIR/src/hyprla
 cp "$REPO_DIR/trigger.sh" "$SHARE_DIR/assistant.sh"
 cp "$REPO_DIR/src/assistant-gui.py" "$SHARE_DIR/assistant-gui.py"
 cp "$REPO_DIR/src/ui.qml" "$SHARE_DIR/ui.qml"
+cp "$REPO_DIR/src/ui.qml" "$LIB_DIR/ui.qml"
+if [ -f "$REPO_DIR/uninstall.sh" ]; then
+    cp "$REPO_DIR/uninstall.sh" "$SHARE_DIR/uninstall.sh"
+    chmod +x "$SHARE_DIR/uninstall.sh"
+fi
 chmod +x "$SHARE_DIR/assistant.sh" "$SHARE_DIR/assistant-gui.py"
 
 echo -e "\n${YELLOW}[6/6] Creating executable wrappers in ~/.local/bin...${NC}"
@@ -253,9 +282,11 @@ SHARE_DIR="$HOME/.local/share/assistant"
 BIN_DIR="$SHARE_DIR/bin"
 VENV_DIR="$SHARE_DIR/venv"
 LIB_DIR="$SHARE_DIR/lib"
+LOCAL_BIN="$HOME/.local/bin"
 
-export PATH="$BIN_DIR:$VENV_DIR/bin:$PATH"
+export PATH="$LOCAL_BIN:$BIN_DIR:$VENV_DIR/bin:$PATH"
 export PYTHONPATH="$LIB_DIR:$PYTHONPATH"
+export LD_LIBRARY_PATH="$BIN_DIR:$LD_LIBRARY_PATH"
 
 exec "$VENV_DIR/bin/python3" "$SHARE_DIR/assistant-gui.py" "$@"
 EOF
@@ -266,16 +297,23 @@ SHARE_DIR="$HOME/.local/share/assistant"
 BIN_DIR="$SHARE_DIR/bin"
 VENV_DIR="$SHARE_DIR/venv"
 LIB_DIR="$SHARE_DIR/lib"
+LOCAL_BIN="$HOME/.local/bin"
 
-export PATH="$BIN_DIR:$VENV_DIR/bin:$PATH"
+export PATH="$LOCAL_BIN:$BIN_DIR:$VENV_DIR/bin:$PATH"
 export PYTHONPATH="$LIB_DIR:$PYTHONPATH"
+export LD_LIBRARY_PATH="$BIN_DIR:$LD_LIBRARY_PATH"
 
 exec "$SHARE_DIR/assistant.sh" "$@"
 EOF
 
 chmod +x "$LOCAL_BIN/assistant" "$LOCAL_BIN/assistant-gui"
 
+# Also symlink wrappers into internal bin directory
+ln -sf "$LOCAL_BIN/assistant-gui" "$BIN_DIR/assistant-gui"
+ln -sf "$LOCAL_BIN/assistant" "$BIN_DIR/assistant"
+
 echo -e "\n${GREEN}        🎉 INSTALLATION COMPLETE 🎉       ${NC}"
 echo -e "${BLUE}You can now run '${GREEN}assistant${BLUE}' or '${GREEN}assistant --voice${BLUE}' from anywhere!${NC}"
 echo -e "${YELLOW}Ensure ~/.local/bin is in your PATH (e.g. in ~/.bashrc or ~/.zshrc):${NC}"
 echo -e "  export PATH=\"\$HOME/.local/bin:\$PATH\"\n"
+echo -e "${BLUE}To cleanly uninstall Assistant in the future, run: '${GREEN}./uninstall.sh${BLUE}' or '${GREEN}~/.local/share/assistant/uninstall.sh${BLUE}'\n${NC}"

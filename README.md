@@ -188,14 +188,146 @@ You are Assistant, an agentic AI desktop companion running locally on Linux (Nix
 
 ---
 
-### Standard Linux (Debian, Ubuntu, etc.)
+### Standard Linux Distributions (Arch Linux, Debian/Ubuntu, Fedora)
 
+Assistant provides an automated, standalone installer (`install.sh`) that sets up all dependencies, an isolated Python environment, audio binaries, offline models, and user wrappers.
+
+#### Supported Distributions
+* **Arch Linux & Derivatives** (`pacman`): Arch Linux, Omarchy, EndeavourOS, Manjaro, CachyOS, Garuda, Artix.
+  - Automatically installs system packages: `sox`, `libpulse`, `wireplumber`, `pipewire`, `pipewire-pulse`, `wl-clipboard`, `grim`, `playerctl`, `python`, `python-pip`, `python-virtualenv`, `wget`, `curl`, `base-devel`, `git`, `xclip`, `maim`, `xdotool`, `wmctrl`, `cmake`, `xcb-util-cursor`, `ffmpeg`, `libnotify`.
+* **Debian / Ubuntu & Derivatives** (`apt`): Ubuntu, Debian, Pop!_OS, Linux Mint.
+  - Automatically installs system packages: `sox`, `libsox-fmt-all`, `jq`, `pipewire-bin`, `wl-clipboard`, `grim`, `playerctl`, `python3-venv`, `python3-pip`, `wget`, `curl`, `build-essential`, `git`, `xclip`, `maim`, `xdotool`, `wmctrl`, `cmake`, `libxcb-cursor0`, `ffmpeg`, `libnotify-bin`.
+* **Fedora & Derivatives** (`dnf`): Fedora Workstation, Silverblue, RHEL-derivatives.
+  - Automatically installs system packages: `sox`, `jq`, `pipewire-utils`, `wl-clipboard`, `grim`, `playerctl`, `python3-virtualenv`, `python3-pip`, `wget`, `curl`, `make`, `automake`, `gcc`, `gcc-c++`, `git`, `xclip`, `maim`, `xdotool`, `wmctrl`, `cmake`, `xcb-util-cursor`, `ffmpeg`, `libnotify`.
+
+#### Installation Steps
 ```bash
 git clone https://github.com/egara/assistant.git
 cd assistant
 chmod +x install.sh
 ./install.sh
 ```
+
+The installer performs the following operations automatically:
+1. **System Dependencies**: Detects your distribution and installs all required packages via `pacman`, `apt`, or `dnf`.
+2. **Python Environment**: Creates an isolated virtual environment at `~/.local/share/assistant/venv` and installs all core Python packages (`PyQt6`, `openai`, `mcp`, `requests`, `beautifulsoup4`, `edge-tts`, `langdetect`, `pypdf`, `ddgs`).
+3. **Audio Binaries**: Compiles `whisper-cli` from source and downloads the pre-built `piper` TTS binary into `~/.local/share/assistant/bin`.
+4. **Local Models**: Downloads the quantized Whisper speech recognition model (`ggml-small.bin`) and your chosen offline Piper TTS voice models.
+5. **Knowledge & Roles**: Deploys system knowledge, user roles, and default `config.json` into `~/.config/assistant/` and `~/.local/share/assistant/`.
+6. **Executable Wrappers**: Generates executable wrappers (`assistant` and `assistant-gui`) inside `~/.local/bin`.
+
+#### Updating to the Latest Version
+
+To update an existing installation to the latest version, pull the latest changes from the repository on your desired branch (e.g. `devel` or `main`) and re-run `install.sh`:
+
+```bash
+cd assistant
+git checkout devel  # or 'main' depending on your desired track
+git pull origin devel
+./install.sh
+```
+
+> [!NOTE]
+> The installation script is safe and idempotent: it updates all core Python modules, UI assets, and executable wrappers without overwriting your existing user configuration (`~/.config/assistant/config.json`), custom roles, or personal knowledge bases.
+
+#### Uninstallation (Complete Removal)
+
+Assistant provides a dedicated uninstaller script (`uninstall.sh`) designed to cleanly remove all application binaries, libraries, virtual environment, wrappers, runtime state, and logs without leaving any leftover files.
+
+```bash
+cd assistant
+chmod +x uninstall.sh
+./uninstall.sh
+```
+
+*(Alternatively, if you already deleted the cloned repository, you can run the uninstaller directly from your local share directory: `~/.local/share/assistant/uninstall.sh`)*.
+
+##### Interactive Safety Confirmations
+1. **Inventory Review & Confirmation**: Before touching any files, the script inspects your system and displays a complete inventory of detected components (running processes, wrappers in `~/.local/bin/`, application files in `~/.local/share/assistant`, runtime logs in `~/.local/state/assistant`, and temporary files in `/tmp/assistant`), asking for your explicit confirmation before proceeding.
+2. **Configuration Preservation Prompt**: It subsequently asks whether you also want to delete your user configuration directory (`~/.config/assistant` containing `config.json`, custom roles, and personal knowledge bases) or keep it intact for future reinstalls.
+
+##### Automation Flags (Non-Interactive)
+For scripted uninstalls, `uninstall.sh` supports the following flags:
+* `-y, --yes`: Skip the initial inventory confirmation and proceed with the uninstallation.
+* `--delete-config` / `--purge`: Automatically remove `~/.config/assistant` without prompting.
+* `--keep-config`: Automatically preserve `~/.config/assistant` without prompting.
+* `-h, --help`: Display uninstaller help and option summary.
+
+---
+
+## 🚀 How to Launch and Use Assistant Once Installed
+
+Once the installation is complete, you can launch Assistant in several ways depending on your workflow.
+
+### 1. PATH Setup Verification
+Ensure `~/.local/bin` is present in your shell's `PATH`. If not already configured, add the following line to your `~/.bashrc`, `~/.zshrc`, or environment profile:
+
+```bash
+export PATH="$HOME/.local/bin:$PATH"
+```
+
+### 2. Launching from the Terminal
+
+Assistant provides two executable commands in `~/.local/bin`:
+
+| Command | Mode | Description |
+|---|---|---|
+| `assistant` | **Primary Launcher / Toggle** | Launches the interactive graphical interface. If Assistant is already running in the background or system tray, invoking `assistant` toggles window visibility (shows/hides the window). |
+| `assistant-gui` | **Direct GUI Launcher** | Launches the PyQt6 GUI directly without the wrapper trigger script. Supports passing an optional prompt: `assistant-gui "Explain quantum computing"`. |
+
+### 3. Voice Interaction Modes
+
+Assistant includes dynamic Voice Activity Detection (VAD) and push-to-talk modes:
+
+* **Automatic VAD Mode (`--voice`)**:
+  ```bash
+  assistant --voice
+  ```
+  Plays a start chime (`start.wav`), records your speech through the microphone, automatically stops recording when silence is detected, transcribes with Whisper (or fast remote ASR if configured in `config.json`), and brings up the Assistant window with the transcribed prompt already processing.
+
+* **Manual Push-to-Talk Toggle Mode (`--voice --toggle`)**:
+  ```bash
+  assistant --voice --toggle
+  ```
+  Ideal for noisy environments. Running the command once begins listening (notifying you with a desktop notification); running the exact same command a second time stops recording and submits the audio for processing.
+
+### 4. Multimodal Context Modes
+
+You can capture screen or clipboard content and attach it directly to your voice command:
+
+* **Clipboard Context (`--clipboard --voice`)**:
+  ```bash
+  assistant --clipboard --voice
+  ```
+  Reads text, image, or copied file path from the Wayland (`wl-paste`) or X11 (`xclip`) clipboard, attaches it as context, and records your spoken question.
+  *Also works with manual toggle*: `assistant --clipboard --toggle`.
+
+* **Active Screen Inspection (`--screen --voice`)**:
+  ```bash
+  assistant --screen --voice
+  ```
+  Captures a screenshot of your screen (via `grim` or `maim`), attaches it to the multimodal context, and records your voice query.
+  *Also works with manual toggle*: `assistant --screen --toggle`.
+
+### 5. System Tray & Background Operation
+
+Assistant is designed to live unobtrusively in your desktop environment's system tray:
+* **Minimize on Close**: Closing the Assistant window (`Ctrl+Q` or clicking the close button) does **not** exit the application; it minimizes it to the system tray so that shortcuts and voice modes respond instantaneously.
+* **Tray Interactions**:
+  * **Left Click**: Toggles / restores the main chat window.
+  * **Right Click**: Opens context menu:
+    * *Maximize*: Shows and focuses the conversation window.
+    * *Talk / Stop talking*: Toggles hands-free spoken conversation without showing the window.
+    * *Exit*: Terminates the application completely.
+* **Tray Status Indicator**: The robot icon (`󰚩`) changes color dynamically based on state:
+  * ⚪ Gray (`#828c99`): Idle / resting.
+  * 🟢 Green (`#7fd962`): Actively listening to microphone.
+  * 🟡 Amber (`#ffb454`): Routing intent via FastFlowLM `d3:edge`.
+  * 🔵 Cyan (`#59c2ff`): Model thinking or executing system tools.
+
+### 6. Window Manager & Shortcut Integration (Hyprland, i3, Sway, GNOME, KDE)
+
+To get the most out of Assistant, map keyboard shortcuts to the commands above. For Hyprland, see the configuration block below. For other window managers (Sway, i3, GNOME, KDE Custom Shortcuts), map your favorite key (e.g. `Super+A`) to `assistant` and `Super+Shift+A` to `assistant --voice`.
 
 ---
 
@@ -272,6 +404,7 @@ This block configures Assistant's multi-model intelligence engine. It supports m
 ```
 
 * **`default`** *(String)*: The default model identifier from the `models` dictionary that Assistant starts with upon launching.
+* **`reasoning_effort`** *(String, Optional)*: Global default reasoning effort level for thinking-capable models (`"none"`, `"low"`, `"medium"`, `"high"`; defaults to `"none"` to ensure maximum response speed unless explicitly enabled).
 * **`history_duration_minutes`** *(Integer/Float)*: Controls memory management. Drops historical message logs from the sliding context window if the file modification timestamp exceeds this duration.
 * **`system_context`** *(String)*: Absolute path pointing to a persistent system context profile markdown file.
 * **`models`** *(Object)*: Key-value map of available models. Each entry contains:
@@ -279,6 +412,7 @@ This block configures Assistant's multi-model intelligence engine. It supports m
   * **`base_url`** *(String)*: Endpoint of the OpenAI-compatible inference server.
   * **`api_key`** *(String)*: Authentication token (`"sk-none"` for local servers).
   * **`vision_enabled`** *(Boolean)*: Enables base64 vision payloads via screen/clipboard capture.
+  * **`supports_thinking`** *(Boolean, Optional)*: Manually force reasoning capability on or off. When omitted, Assistant automatically probes the provider endpoint (`/api/show` and `/api/tags` on Ollama) and applies reasoning model heuristics.
   * **`timeout`** *(Float, Optional)*: Request timeout in seconds (defaults to `180.0`). Prevents unexpected cuts during large context prefill sequences.
   * **`provider_name`** *(String, Optional)*: Informational label (e.g., `"local"`, `"groq"`).
   * **`max_tool_rounds`** *(Integer, Optional)*: Maximum number of chained tool-execution rounds per user request (defaults to `6`, hard-capped at `12`). The final allowed round withholds the tools schema to force a plain text answer. Raise it for strong agentic models that chain several searches before answering, or lower it for lightweight models to keep them on a tight budget. If a turn ends without any result, a visible fallback message is shown instead of leaving the request unanswered.
@@ -468,7 +602,7 @@ Configures autonomous webcam surveillance intervals and cooldowns:
 
 Assistant features a clean Material Design GUI styled with **SicOS Nerd Font** icons and high contrast:
 * **Interactive Help & Reset**: Click the `?` icon in the upper-right corner or the dedicated microphone toggle on the left of the input field.
-* **Interactive Model Selector Badge**: The active model pill badge right below the input box shows the current model and acts as a clickable dropdown selector to switch models on the fly without typing commands.
+* **Interactive Model & Reasoning Badges**: Pill badges right below the input box display the active model (`󰚩`) and its current reasoning effort (`󰟷`). Clicking either opens a dropdown menu to switch models or modify reasoning effort (`none` / `low` / `medium` / `high`) on the fly. Models that do not support thinking are automatically detected via runtime API capability probing and displayed as `󰟷 N/A` (disabled).
 * **Multimodal Attachments (`+` Button & Clipboard `Ctrl+V`)**: Attach images, documents, and notes via the integrated `+` button in the prompt bar, or paste copied screenshots/images directly with `Ctrl+V`:
   * **Images (`.png`, `.jpg`, `.jpeg`, `.webp`, `.gif`, `.bmp`)**: Encoded to base64 data URIs for vision-capable models (e.g., Gemma 3/4, Qwen VL, MiniCPM-V).
   * **PDF Documents (`.pdf`)**: Extracted page text and interactive PDF form fields/inputs (via `pypdf`), injected cleanly into the context turn so the model can inspect and reason over documents and filled forms.
@@ -481,6 +615,7 @@ Assistant features a clean Material Design GUI styled with **SicOS Nerd Font** i
 ### Built-in Slash Commands & Shortcuts
 You can type the following commands directly into the prompt box:
 * **/model**: Lists all available configured models indicating which one is active, or toggles to the next model in the list. Use `/model <name>` (e.g. `/model glm`) to switch directly to a specific model.
+* **/reasoning** or **/thinking**: Displays the active thinking effort level or switches it (`none`, `low`, `medium`, `high`). Allows turning off model chain of thought for instant responses or boosting reasoning depth for complex tasks.
 * **/role**: Lists all available system and user roles indicating which one is active. Use `/role <nombre>` (e.g. `/role news`, `/role default`) to switch roles dynamically and alter the system prompt.
 * **/mcp** or **/servers**: Displays the status, priority, and active selection of all configured MCP servers.
 * **/voice** or **/tts**: Toggles text-to-speech spoken audio output on/off.
@@ -583,11 +718,11 @@ Requests are resolved through a multi-round agentic loop instead of a fixed two-
 The codebase follows a modular design separating configuration and properties, execution tools, intent routing, UI slash commands, model catalogs, voice engines, and external protocol managers:
 * **`src/properties/manager.py`**: Singleton Properties & Configuration Manager (`PropertiesManager`) centralizing path resolution (config, data, sounds, state, knowledge, roles, QML), loading and managing `config.json`, roles management (system & user roles), dynamic runtime properties (`active_model_key`, `tts_enabled`, `is_voice_mode`), and property change listeners.
 * **`src/voice/tts.py`**: Audio and speech synthesis worker (`TTSWorkerThread`, `stop_all_media_playback`) managing Edge-TTS / Piper ONNX local execution, language detection, and PipeWire playback.
-* **`src/llm/generator.py`**: Multi-round agentic loop worker (`AIGeneratorThread`, `extract_reasoning`), streaming tokens, DeepSeek/GLM reasoning capture, command approval safety checks, and loop prevention.
-* **`src/llm/catalog.py`**: Multi-model intelligence manager (`ModelCatalog`) managing presets, OpenAI client instantiation, runtime model catalog, endpoint discovery (`/models`), and QML selector grouping.
+* **`src/llm/generator.py`**: Multi-round agentic loop worker (`AIGeneratorThread`, `extract_reasoning`), streaming tokens, DeepSeek/GLM reasoning capture, dynamic `reasoning_effort` passing with failure-tolerant error shielding, command approval safety checks, and loop prevention.
+* **`src/llm/catalog.py`**: Multi-model intelligence manager (`ModelCatalog`) managing presets, OpenAI client instantiation, runtime model catalog, endpoint discovery (`/models`), runtime capability probing (`/api/show`, `/api/tags`), and QML selector grouping.
 * **`src/tools/dispatch.py`**: Domain-wide tool dispatcher (`dispatch_tool`) mapping tool calls to implementations and evaluating silent desktop completion policies.
 * **`src/mcp_client/manager.py`**: Model Context Protocol client manager (`MCPManager`) coordinating SSE/HTTP transport connections, dynamic tool discovery, and remote tool execution.
-* **`src/commands/`**: Command/Registry pattern implementing interactive slash commands (`/new`, `/reset`, `/clear`, `/help`, `/about`, `/voice`, `/tts`, `/model`, `/role`, `/mcp`) through decoupled modules (`session.py`, `system.py`, `voice.py`, `model.py`, `role.py`, `mcp.py`).
+* **`src/commands/`**: Command/Registry pattern implementing interactive slash commands (`/new`, `/reset`, `/clear`, `/help`, `/about`, `/voice`, `/tts`, `/model`, `/reasoning`, `/role`, `/mcp`) through decoupled modules (`session.py`, `system.py`, `voice.py`, `model.py`, `reasoning.py`, `role.py`, `mcp.py`).
 * **`src/routing/routing.py`**: Encapsulates `DecisionRouter` for FastFlowLM / d3:edge System One categorization, dynamic category-to-tools resolution, latency measurement, and fallback handling.
 * **`src/tools/time.py`**: Local time/date resolution with IANA timezone support (`get_current_time`).
 * **`src/tools/weather.py`**: Weather forecast resolution with Open-Meteo & wttr.in fallback (`get_weather`).

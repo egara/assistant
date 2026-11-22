@@ -7,6 +7,7 @@ from .voice import VoiceCommand
 from .model import ModelCommand
 from .role import RoleCommand
 from .mcp import MCPCommand
+from .reasoning import ReasoningCommand
 
 
 def create_default_registry() -> CommandRegistry:
@@ -26,6 +27,9 @@ def create_default_registry() -> CommandRegistry:
     # Model management (/model)
     registry.register(ModelCommand())
 
+    # Reasoning / Thinking management (/reasoning, /thinking)
+    registry.register(ReasoningCommand())
+
     # Role management (/role)
     registry.register(RoleCommand())
 
@@ -44,6 +48,7 @@ __all__ = [
     "AboutCommand",
     "VoiceCommand",
     "ModelCommand",
+    "ReasoningCommand",
     "RoleCommand",
     "MCPCommand",
     "create_default_registry",

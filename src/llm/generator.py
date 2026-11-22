@@ -210,6 +210,7 @@ class AIGeneratorThread(QThread):
         resolve_tools_fn: Optional[Callable[..., Tuple[List[Dict[str, Any]], Optional[Dict[str, Any]]]]] = None,
         hide_window_callback: Optional[Callable[[], None]] = None,
         show_window_callback: Optional[Callable[[], None]] = None,
+        reasoning_effort: Optional[str] = None,
     ):
         super().__init__()
         self.messages = messages
@@ -219,6 +220,7 @@ class AIGeneratorThread(QThread):
         self.resolve_tools_fn = resolve_tools_fn
         self.hide_window_callback = hide_window_callback
         self.show_window_callback = show_window_callback
+        self.reasoning_effort = reasoning_effort
         self.approval_event = threading.Event()
         self.approval_result = False
         self._is_stopped = False
@@ -314,6 +316,9 @@ class AIGeneratorThread(QThread):
                     "temperature": 0.0,
                     "stream": True,
                 }
+                if self.reasoning_effort and self.model_config.get("supports_thinking", False):
+                    request_kwargs["reasoning_effort"] = self.reasoning_effort
+
                 if api_kwargs.get("tools") and round_num < max_tool_rounds:
                     request_kwargs["tools"] = api_kwargs["tools"]
                 elif api_kwargs.get("tools"):
@@ -323,6 +328,20 @@ class AIGeneratorThread(QThread):
 
                 try:
                     response = active_client.chat.completions.create(**request_kwargs)
+                except openai.BadRequestError as bre:
+                    # Robust shield: if the API complains that this model does not support thinking
+                    # or rejected reasoning_effort, retry immediately without reasoning_effort and mark model
+                    err_text = str(bre).lower()
+                    if ("thinking" in err_text or "reasoning" in err_text) and "reasoning_effort" in request_kwargs:
+                        logger.warning(
+                            f"[LLM] Endpoint rejected reasoning_effort for '{active_model}': {bre}. "
+                            f"Retrying without reasoning_effort parameter..."
+                        )
+                        self.model_config["supports_thinking"] = False
+                        request_kwargs.pop("reasoning_effort", None)
+                        response = active_client.chat.completions.create(**request_kwargs)
+                    else:
+                        raise bre
                 except openai.APIConnectionError as ce:
                     logger.warning(
                         f"[LLM] Primary endpoint error ({ce}). "
