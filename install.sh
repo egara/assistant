@@ -268,6 +268,10 @@ cp "$REPO_DIR/trigger.sh" "$SHARE_DIR/assistant.sh"
 cp "$REPO_DIR/src/assistant-gui.py" "$SHARE_DIR/assistant-gui.py"
 cp "$REPO_DIR/src/ui.qml" "$SHARE_DIR/ui.qml"
 cp "$REPO_DIR/src/ui.qml" "$LIB_DIR/ui.qml"
+if [ -f "$REPO_DIR/uninstall.sh" ]; then
+    cp "$REPO_DIR/uninstall.sh" "$SHARE_DIR/uninstall.sh"
+    chmod +x "$SHARE_DIR/uninstall.sh"
+fi
 chmod +x "$SHARE_DIR/assistant.sh" "$SHARE_DIR/assistant-gui.py"
 
 echo -e "\n${YELLOW}[6/6] Creating executable wrappers in ~/.local/bin...${NC}"
@@ -312,3 +316,4 @@ echo -e "\n${GREEN}        🎉 INSTALLATION COMPLETE 🎉       ${NC}"
 echo -e "${BLUE}You can now run '${GREEN}assistant${BLUE}' or '${GREEN}assistant --voice${BLUE}' from anywhere!${NC}"
 echo -e "${YELLOW}Ensure ~/.local/bin is in your PATH (e.g. in ~/.bashrc or ~/.zshrc):${NC}"
 echo -e "  export PATH=\"\$HOME/.local/bin:\$PATH\"\n"
+echo -e "${BLUE}To cleanly uninstall Assistant in the future, run: '${GREEN}./uninstall.sh${BLUE}' or '${GREEN}~/.local/share/assistant/uninstall.sh${BLUE}'\n${NC}"
