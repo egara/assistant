@@ -216,6 +216,29 @@ The installer performs the following operations automatically:
 5. **Knowledge & Roles**: Deploys system knowledge, user roles, and default `config.json` into `~/.config/assistant/` and `~/.local/share/assistant/`.
 6. **Executable Wrappers**: Generates executable wrappers (`assistant` and `assistant-gui`) inside `~/.local/bin`.
 
+#### Uninstallation (Complete Removal)
+
+Assistant provides a dedicated uninstaller script (`uninstall.sh`) designed to cleanly remove all application binaries, libraries, virtual environment, wrappers, runtime state, and logs without leaving any leftover files.
+
+```bash
+cd assistant
+chmod +x uninstall.sh
+./uninstall.sh
+```
+
+*(Alternatively, if you already deleted the cloned repository, you can run the uninstaller directly from your local share directory: `~/.local/share/assistant/uninstall.sh`)*.
+
+##### Interactive Safety Confirmations
+1. **Inventory Review & Confirmation**: Before touching any files, the script inspects your system and displays a complete inventory of detected components (running processes, wrappers in `~/.local/bin/`, application files in `~/.local/share/assistant`, runtime logs in `~/.local/state/assistant`, and temporary files in `/tmp/assistant`), asking for your explicit confirmation before proceeding.
+2. **Configuration Preservation Prompt**: It subsequently asks whether you also want to delete your user configuration directory (`~/.config/assistant` containing `config.json`, custom roles, and personal knowledge bases) or keep it intact for future reinstalls.
+
+##### Automation Flags (Non-Interactive)
+For scripted uninstalls, `uninstall.sh` supports the following flags:
+* `-y, --yes`: Skip the initial inventory confirmation and proceed with the uninstallation.
+* `--delete-config` / `--purge`: Automatically remove `~/.config/assistant` without prompting.
+* `--keep-config`: Automatically preserve `~/.config/assistant` without prompting.
+* `-h, --help`: Display uninstaller help and option summary.
+
 ---
 
 ## 🚀 How to Launch and Use Assistant Once Installed
