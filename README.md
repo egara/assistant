@@ -216,6 +216,20 @@ The installer performs the following operations automatically:
 5. **Knowledge & Roles**: Deploys system knowledge, user roles, and default `config.json` into `~/.config/assistant/` and `~/.local/share/assistant/`.
 6. **Executable Wrappers**: Generates executable wrappers (`assistant` and `assistant-gui`) inside `~/.local/bin`.
 
+#### Updating to the Latest Version
+
+To update an existing installation to the latest version, pull the latest changes from the repository on your desired branch (e.g. `devel` or `main`) and re-run `install.sh`:
+
+```bash
+cd assistant
+git checkout devel  # or 'main' depending on your desired track
+git pull origin devel
+./install.sh
+```
+
+> [!NOTE]
+> The installation script is safe and idempotent: it updates all core Python modules, UI assets, and executable wrappers without overwriting your existing user configuration (`~/.config/assistant/config.json`), custom roles, or personal knowledge bases.
+
 #### Uninstallation (Complete Removal)
 
 Assistant provides a dedicated uninstaller script (`uninstall.sh`) designed to cleanly remove all application binaries, libraries, virtual environment, wrappers, runtime state, and logs without leaving any leftover files.
