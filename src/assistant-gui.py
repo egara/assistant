@@ -416,7 +416,7 @@ class Backend(QObject):
             get_mcp_status=lambda: props.get_mcp_status(),
             is_vision_supported=lambda: self.is_vision_supported,
             get_active_reasoning_effort=lambda: props.active_reasoning_effort,
-            set_active_reasoning_effort=self.switch_reasoning,
+            set_active_reasoning_effort=self._set_active_reasoning_effort,
             is_thinking_supported=lambda: self.is_thinking_supported,
         )
 
@@ -457,6 +457,12 @@ class Backend(QObject):
         self.visionSupportedChanged.emit(self.is_vision_supported)
         self.reasoningSupportedChanged.emit(self.is_thinking_supported)
         self._update_surveillance_client()
+
+    def _set_active_reasoning_effort(self, effort: str) -> bool:
+        success = props.set_active_reasoning_effort(effort)
+        if success:
+            self.activeReasoningChanged.emit(props.active_reasoning_effort)
+        return success
 
     @property
     def is_vision_supported(self) -> bool:
@@ -651,7 +657,6 @@ class Backend(QObject):
         """Switch or query LLM reasoning effort level."""
         cmd = f"/reasoning {effort}".strip() if effort else "/reasoning"
         self.command_registry.dispatch(cmd, self.command_context)
-        self.activeReasoningChanged.emit(props.active_reasoning_effort)
 
     @pyqtSlot()
     def save_history(self):
