@@ -390,6 +390,7 @@ This block configures Assistant's multi-model intelligence engine. It supports m
 ```
 
 * **`default`** *(String)*: The default model identifier from the `models` dictionary that Assistant starts with upon launching.
+* **`reasoning_effort`** *(String, Optional)*: Global default reasoning effort level for thinking-capable models (`"none"`, `"low"`, `"medium"`, `"high"`; defaults to `"medium"`).
 * **`history_duration_minutes`** *(Integer/Float)*: Controls memory management. Drops historical message logs from the sliding context window if the file modification timestamp exceeds this duration.
 * **`system_context`** *(String)*: Absolute path pointing to a persistent system context profile markdown file.
 * **`models`** *(Object)*: Key-value map of available models. Each entry contains:
@@ -397,6 +398,7 @@ This block configures Assistant's multi-model intelligence engine. It supports m
   * **`base_url`** *(String)*: Endpoint of the OpenAI-compatible inference server.
   * **`api_key`** *(String)*: Authentication token (`"sk-none"` for local servers).
   * **`vision_enabled`** *(Boolean)*: Enables base64 vision payloads via screen/clipboard capture.
+  * **`supports_thinking`** *(Boolean, Optional)*: Manually force reasoning capability on or off. When omitted, Assistant automatically probes the provider endpoint (`/api/show` and `/api/tags` on Ollama) and applies reasoning model heuristics.
   * **`timeout`** *(Float, Optional)*: Request timeout in seconds (defaults to `180.0`). Prevents unexpected cuts during large context prefill sequences.
   * **`provider_name`** *(String, Optional)*: Informational label (e.g., `"local"`, `"groq"`).
   * **`max_tool_rounds`** *(Integer, Optional)*: Maximum number of chained tool-execution rounds per user request (defaults to `6`, hard-capped at `12`). The final allowed round withholds the tools schema to force a plain text answer. Raise it for strong agentic models that chain several searches before answering, or lower it for lightweight models to keep them on a tight budget. If a turn ends without any result, a visible fallback message is shown instead of leaving the request unanswered.
@@ -586,7 +588,7 @@ Configures autonomous webcam surveillance intervals and cooldowns:
 
 Assistant features a clean Material Design GUI styled with **SicOS Nerd Font** icons and high contrast:
 * **Interactive Help & Reset**: Click the `?` icon in the upper-right corner or the dedicated microphone toggle on the left of the input field.
-* **Interactive Model Selector Badge**: The active model pill badge right below the input box shows the current model and acts as a clickable dropdown selector to switch models on the fly without typing commands.
+* **Interactive Model & Reasoning Badges**: Pill badges right below the input box display the active model (`󰚩`) and its current reasoning effort (`󰟷`). Clicking either opens a dropdown menu to switch models or modify reasoning effort (`none` / `low` / `medium` / `high`) on the fly. Models that do not support thinking are automatically detected via runtime API capability probing and displayed as `󰟷 N/A` (disabled).
 * **Multimodal Attachments (`+` Button & Clipboard `Ctrl+V`)**: Attach images, documents, and notes via the integrated `+` button in the prompt bar, or paste copied screenshots/images directly with `Ctrl+V`:
   * **Images (`.png`, `.jpg`, `.jpeg`, `.webp`, `.gif`, `.bmp`)**: Encoded to base64 data URIs for vision-capable models (e.g., Gemma 3/4, Qwen VL, MiniCPM-V).
   * **PDF Documents (`.pdf`)**: Extracted page text and interactive PDF form fields/inputs (via `pypdf`), injected cleanly into the context turn so the model can inspect and reason over documents and filled forms.
@@ -599,6 +601,7 @@ Assistant features a clean Material Design GUI styled with **SicOS Nerd Font** i
 ### Built-in Slash Commands & Shortcuts
 You can type the following commands directly into the prompt box:
 * **/model**: Lists all available configured models indicating which one is active, or toggles to the next model in the list. Use `/model <name>` (e.g. `/model glm`) to switch directly to a specific model.
+* **/reasoning** or **/thinking**: Displays the active thinking effort level or switches it (`none`, `low`, `medium`, `high`). Allows turning off model chain of thought for instant responses or boosting reasoning depth for complex tasks.
 * **/role**: Lists all available system and user roles indicating which one is active. Use `/role <nombre>` (e.g. `/role news`, `/role default`) to switch roles dynamically and alter the system prompt.
 * **/mcp** or **/servers**: Displays the status, priority, and active selection of all configured MCP servers.
 * **/voice** or **/tts**: Toggles text-to-speech spoken audio output on/off.
@@ -701,11 +704,11 @@ Requests are resolved through a multi-round agentic loop instead of a fixed two-
 The codebase follows a modular design separating configuration and properties, execution tools, intent routing, UI slash commands, model catalogs, voice engines, and external protocol managers:
 * **`src/properties/manager.py`**: Singleton Properties & Configuration Manager (`PropertiesManager`) centralizing path resolution (config, data, sounds, state, knowledge, roles, QML), loading and managing `config.json`, roles management (system & user roles), dynamic runtime properties (`active_model_key`, `tts_enabled`, `is_voice_mode`), and property change listeners.
 * **`src/voice/tts.py`**: Audio and speech synthesis worker (`TTSWorkerThread`, `stop_all_media_playback`) managing Edge-TTS / Piper ONNX local execution, language detection, and PipeWire playback.
-* **`src/llm/generator.py`**: Multi-round agentic loop worker (`AIGeneratorThread`, `extract_reasoning`), streaming tokens, DeepSeek/GLM reasoning capture, command approval safety checks, and loop prevention.
-* **`src/llm/catalog.py`**: Multi-model intelligence manager (`ModelCatalog`) managing presets, OpenAI client instantiation, runtime model catalog, endpoint discovery (`/models`), and QML selector grouping.
+* **`src/llm/generator.py`**: Multi-round agentic loop worker (`AIGeneratorThread`, `extract_reasoning`), streaming tokens, DeepSeek/GLM reasoning capture, dynamic `reasoning_effort` passing with failure-tolerant error shielding, command approval safety checks, and loop prevention.
+* **`src/llm/catalog.py`**: Multi-model intelligence manager (`ModelCatalog`) managing presets, OpenAI client instantiation, runtime model catalog, endpoint discovery (`/models`), runtime capability probing (`/api/show`, `/api/tags`), and QML selector grouping.
 * **`src/tools/dispatch.py`**: Domain-wide tool dispatcher (`dispatch_tool`) mapping tool calls to implementations and evaluating silent desktop completion policies.
 * **`src/mcp_client/manager.py`**: Model Context Protocol client manager (`MCPManager`) coordinating SSE/HTTP transport connections, dynamic tool discovery, and remote tool execution.
-* **`src/commands/`**: Command/Registry pattern implementing interactive slash commands (`/new`, `/reset`, `/clear`, `/help`, `/about`, `/voice`, `/tts`, `/model`, `/role`, `/mcp`) through decoupled modules (`session.py`, `system.py`, `voice.py`, `model.py`, `role.py`, `mcp.py`).
+* **`src/commands/`**: Command/Registry pattern implementing interactive slash commands (`/new`, `/reset`, `/clear`, `/help`, `/about`, `/voice`, `/tts`, `/model`, `/reasoning`, `/role`, `/mcp`) through decoupled modules (`session.py`, `system.py`, `voice.py`, `model.py`, `reasoning.py`, `role.py`, `mcp.py`).
 * **`src/routing/routing.py`**: Encapsulates `DecisionRouter` for FastFlowLM / d3:edge System One categorization, dynamic category-to-tools resolution, latency measurement, and fallback handling.
 * **`src/tools/time.py`**: Local time/date resolution with IANA timezone support (`get_current_time`).
 * **`src/tools/weather.py`**: Weather forecast resolution with Open-Meteo & wttr.in fallback (`get_weather`).

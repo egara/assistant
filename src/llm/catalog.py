@@ -2,6 +2,8 @@
 
 import json
 import logging
+import re
+import urllib.error
 import urllib.request
 from typing import Any, Dict, List, Optional
 
@@ -35,6 +37,15 @@ class ModelCatalog:
                     m_provider = spec.get("provider_name", "local")
                     m_max_rounds = spec.get("max_tool_rounds")
 
+                    m_thinking_spec = spec.get("supports_thinking")
+                    if m_thinking_spec is None:
+                        m_thinking_spec = spec.get("reasoning_enabled")
+                    m_thinking = (
+                        bool(m_thinking_spec)
+                        if m_thinking_spec is not None
+                        else self.probe_model_thinking_support(m_url, m_key_auth, m_name)
+                    )
+
                     client_inst = OpenAI(
                         base_url=m_url,
                         api_key=m_key_auth,
@@ -48,6 +59,7 @@ class ModelCatalog:
                         "base_url": m_url,
                         "api_key": m_key_auth,
                         "vision_enabled": m_vision,
+                        "supports_thinking": m_thinking,
                         "provider_name": m_provider,
                         "max_tool_rounds": m_max_rounds,
                         "is_preset": True,
@@ -62,6 +74,7 @@ class ModelCatalog:
             primary_vision = self.config.get("vision_enabled", True)
             primary_provider = self.config.get("provider_name", "local")
             primary_max_rounds = self.config.get("max_tool_rounds")
+            primary_thinking = self.probe_model_thinking_support(primary_url, primary_key, primary_name)
 
             primary_client = OpenAI(
                 base_url=primary_url,
@@ -77,6 +90,7 @@ class ModelCatalog:
                 "base_url": primary_url,
                 "api_key": primary_key,
                 "vision_enabled": primary_vision,
+                "supports_thinking": primary_thinking,
                 "provider_name": primary_provider,
                 "max_tool_rounds": primary_max_rounds,
                 "is_preset": True,
@@ -90,6 +104,7 @@ class ModelCatalog:
                 fb_timeout = float(fallback_conf.get("timeout", 180.0))
                 fb_vision = fallback_conf.get("vision_enabled", True)
                 fb_provider = fallback_conf.get("provider_name", "local")
+                fb_thinking = self.probe_model_thinking_support(fb_url, fb_key, fb_name)
 
                 fb_client = OpenAI(
                     base_url=fb_url,
@@ -104,6 +119,7 @@ class ModelCatalog:
                     "base_url": fb_url,
                     "api_key": fb_key,
                     "vision_enabled": fb_vision,
+                    "supports_thinking": fb_thinking,
                     "provider_name": fb_provider,
                     "is_preset": True,
                 }
@@ -137,6 +153,11 @@ class ModelCatalog:
                             for info in self.catalog.values()
                         )
                         if not already_in_catalog:
+                            m_thinking = self.probe_model_thinking_support(
+                                base_info.get("base_url", ""),
+                                base_info.get("api_key", "sk-none"),
+                                m_id,
+                            )
                             self.catalog[m_id] = {
                                 "key": m_id,
                                 "name": m_id,
@@ -144,12 +165,102 @@ class ModelCatalog:
                                 "base_url": base_info.get("base_url"),
                                 "api_key": base_info.get("api_key"),
                                 "vision_enabled": base_info.get("vision_enabled", True),
+                                "supports_thinking": m_thinking,
                                 "provider_name": p_name,
                                 "is_preset": False,
                             }
-                            logger.info(f"[Discovery] Found model '{m_id}' on {p_name} ({b_url})")
+                            logger.info(
+                                f"[Discovery] Found model '{m_id}' on {p_name} ({b_url}) "
+                                f"[vision={base_info.get('vision_enabled', True)}, thinking={m_thinking}]"
+                            )
             except Exception as e:
                 logger.debug(f"[Discovery] Could not fetch models from {models_url}: {e}")
+
+    def probe_model_thinking_support(
+        self, base_url: str, api_key: str, model_name: str
+    ) -> bool:
+        """Safely probe provider endpoint to detect whether the model supports reasoning/thinking.
+
+        Guarded with short timeouts and explicit exception handling so incompatible
+        endpoints, timeouts, or network errors never crash or freeze the application.
+        """
+        if not base_url or not model_name:
+            return False
+
+        root_url = base_url.rstrip("/")
+        if root_url.endswith("/v1"):
+            root_url = root_url[:-3]
+        elif root_url.endswith("/api"):
+            root_url = root_url[:-4]
+
+        auth_header = f"Bearer {api_key}" if api_key and api_key != "sk-none" else None
+
+        # 1. Probe Ollama /api/show (POST {"name": model_name})
+        show_url = f"{root_url}/api/show"
+        try:
+            req_headers = {"Content-Type": "application/json"}
+            if auth_header:
+                req_headers["Authorization"] = auth_header
+            req_data = json.dumps({"name": model_name}).encode("utf-8")
+            req = urllib.request.Request(show_url, data=req_data, headers=req_headers)
+            with urllib.request.urlopen(req, timeout=1.5) as resp:
+                data = json.loads(resp.read().decode("utf-8"))
+                if "thinking" in data:
+                    val = data.get("thinking")
+                    if isinstance(val, dict) or val is True:
+                        return True
+                    if val is False or val is None:
+                        return False
+                caps = data.get("capabilities", [])
+                if isinstance(caps, list):
+                    if "thinking" in caps:
+                        return True
+                    if caps:
+                        return False
+        except (urllib.error.URLError, urllib.error.HTTPError, TimeoutError, json.JSONDecodeError, OSError) as e:
+            logger.debug(f"[Catalog] Probe {show_url} failed for '{model_name}': {e}")
+
+        # 2. Probe Ollama /api/tags (GET)
+        tags_url = f"{root_url}/api/tags"
+        try:
+            req_headers = {}
+            if auth_header:
+                req_headers["Authorization"] = auth_header
+            req = urllib.request.Request(tags_url, headers=req_headers)
+            with urllib.request.urlopen(req, timeout=1.5) as resp:
+                data = json.loads(resp.read().decode("utf-8"))
+                for m in data.get("models", []):
+                    m_n = m.get("name") or m.get("model") or ""
+                    if m_n == model_name or m_n.split(":")[0] == model_name.split(":")[0]:
+                        caps = m.get("capabilities", [])
+                        if isinstance(caps, list):
+                            if "thinking" in caps:
+                                return True
+                            if caps:
+                                return False
+        except (urllib.error.URLError, urllib.error.HTTPError, TimeoutError, json.JSONDecodeError, OSError) as e:
+            logger.debug(f"[Catalog] Probe {tags_url} failed for '{model_name}': {e}")
+
+        # 3. Known reasoning model name heuristic (for OpenAI o1/o3, DeepSeek R1, QwQ, Gemma 4, etc.)
+        lower_name = model_name.lower()
+        if re.search(r"(?:^|[-_./])(o1|o3|o4|r1|qwq|thinking|gemma4)(?:$|[-_.:/])", lower_name):
+            return True
+
+        return False
+
+    def is_thinking_supported(self, key: str) -> bool:
+        """Check whether the model corresponding to key supports reasoning / thinking tokens."""
+        model_info = self.get_model(key)
+        if not model_info:
+            return False
+        if "supports_thinking" in model_info:
+            return bool(model_info["supports_thinking"])
+        base_url = model_info.get("base_url", "")
+        api_key = model_info.get("api_key", "sk-none")
+        model_name = model_info.get("name", key)
+        supported = self.probe_model_thinking_support(base_url, api_key, model_name)
+        model_info["supports_thinking"] = supported
+        return supported
 
     def _resolve_default_model_key(self) -> str:
         """Determine default initial active model."""

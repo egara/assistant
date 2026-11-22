@@ -376,6 +376,8 @@ class Backend(QObject):
     clearApproval = pyqtSignal()
     pendingAttachmentsChanged = pyqtSignal(list)
     visionSupportedChanged = pyqtSignal(bool)
+    activeReasoningChanged = pyqtSignal(str)
+    reasoningSupportedChanged = pyqtSignal(bool)
     surveillanceActiveChanged = pyqtSignal(bool)
     surveillanceTriggeredSignal = pyqtSignal(str, str)
     surveillanceStateChangedSignal = pyqtSignal(bool)
@@ -413,6 +415,9 @@ class Backend(QObject):
             set_active_role=self._set_active_role,
             get_mcp_status=lambda: props.get_mcp_status(),
             is_vision_supported=lambda: self.is_vision_supported,
+            get_active_reasoning_effort=lambda: props.active_reasoning_effort,
+            set_active_reasoning_effort=self.switch_reasoning,
+            is_thinking_supported=lambda: self.is_thinking_supported,
         )
 
         self.load_history()
@@ -450,11 +455,16 @@ class Backend(QObject):
     def _set_active_model_key(self, key: str) -> None:
         props.set_active_model_key(key)
         self.visionSupportedChanged.emit(self.is_vision_supported)
+        self.reasoningSupportedChanged.emit(self.is_thinking_supported)
         self._update_surveillance_client()
 
     @property
     def is_vision_supported(self) -> bool:
         return model_catalog_manager.is_vision_supported(self.active_model_key)
+
+    @property
+    def is_thinking_supported(self) -> bool:
+        return model_catalog_manager.is_thinking_supported(self.active_model_key)
 
     @pyqtSlot()
     def hide_window(self):
@@ -534,6 +544,8 @@ class Backend(QObject):
         curr_name = curr_cfg.get("name", self.active_model_key)
         self.activeModelChanged.emit(f"{self.active_model_key} ({curr_name})")
         self.availableModelsChanged.emit(self.get_models_list())
+        self.activeReasoningChanged.emit(props.active_reasoning_effort)
+        self.reasoningSupportedChanged.emit(self.is_thinking_supported)
         self.voiceStateChanged.emit(self.is_recording or self.is_voice_mode)
         self.ttsStateChanged.emit(self.tts_enabled)
         self.visionSupportedChanged.emit(self.is_vision_supported)
@@ -633,6 +645,13 @@ class Backend(QObject):
         """List or switch active LLM from the models catalog."""
         cmd = f"/model {target_key}".strip() if target_key else "/model"
         self.command_registry.dispatch(cmd, self.command_context)
+
+    @pyqtSlot(str)
+    def switch_reasoning(self, effort=""):
+        """Switch or query LLM reasoning effort level."""
+        cmd = f"/reasoning {effort}".strip() if effort else "/reasoning"
+        self.command_registry.dispatch(cmd, self.command_context)
+        self.activeReasoningChanged.emit(props.active_reasoning_effort)
 
     @pyqtSlot()
     def save_history(self):
@@ -1125,6 +1144,7 @@ class Backend(QObject):
             resolve_tools_fn=resolve_tools_for_query,
             hide_window_callback=self.request_hide_window,
             show_window_callback=self.request_show_window,
+            reasoning_effort=props.active_reasoning_effort,
         )
         self.ai_thread.status_signal.connect(self.statusChanged.emit)
         self.ai_thread.active_model_signal.connect(self.activeModelChanged.emit)
