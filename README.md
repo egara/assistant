@@ -188,14 +188,109 @@ You are Assistant, an agentic AI desktop companion running locally on Linux (Nix
 
 ---
 
-### Standard Linux (Debian, Ubuntu, etc.)
+### Standard Linux Distributions (Arch Linux, Debian/Ubuntu, Fedora)
 
+Assistant provides an automated, standalone installer (`install.sh`) that sets up all dependencies, an isolated Python environment, audio binaries, offline models, and user wrappers.
+
+#### Supported Distributions
+* **Arch Linux & Derivatives** (`pacman`): Arch Linux, Omarchy, EndeavourOS, Manjaro, CachyOS, Garuda, Artix.
+  - Automatically installs system packages: `sox`, `libpulse`, `wireplumber`, `pipewire`, `pipewire-pulse`, `wl-clipboard`, `grim`, `playerctl`, `python`, `python-pip`, `python-virtualenv`, `wget`, `curl`, `base-devel`, `git`, `xclip`, `maim`, `xdotool`, `wmctrl`, `cmake`, `xcb-util-cursor`, `ffmpeg`, `libnotify`.
+* **Debian / Ubuntu & Derivatives** (`apt`): Ubuntu, Debian, Pop!_OS, Linux Mint.
+  - Automatically installs system packages: `sox`, `libsox-fmt-all`, `jq`, `pipewire-bin`, `wl-clipboard`, `grim`, `playerctl`, `python3-venv`, `python3-pip`, `wget`, `curl`, `build-essential`, `git`, `xclip`, `maim`, `xdotool`, `wmctrl`, `cmake`, `libxcb-cursor0`, `ffmpeg`, `libnotify-bin`.
+* **Fedora & Derivatives** (`dnf`): Fedora Workstation, Silverblue, RHEL-derivatives.
+  - Automatically installs system packages: `sox`, `jq`, `pipewire-utils`, `wl-clipboard`, `grim`, `playerctl`, `python3-virtualenv`, `python3-pip`, `wget`, `curl`, `make`, `automake`, `gcc`, `gcc-c++`, `git`, `xclip`, `maim`, `xdotool`, `wmctrl`, `cmake`, `xcb-util-cursor`, `ffmpeg`, `libnotify`.
+
+#### Installation Steps
 ```bash
 git clone https://github.com/egara/assistant.git
 cd assistant
 chmod +x install.sh
 ./install.sh
 ```
+
+The installer performs the following operations automatically:
+1. **System Dependencies**: Detects your distribution and installs all required packages via `pacman`, `apt`, or `dnf`.
+2. **Python Environment**: Creates an isolated virtual environment at `~/.local/share/assistant/venv` and installs all core Python packages (`PyQt6`, `openai`, `mcp`, `requests`, `beautifulsoup4`, `edge-tts`, `langdetect`, `pypdf`, `ddgs`).
+3. **Audio Binaries**: Compiles `whisper-cli` from source and downloads the pre-built `piper` TTS binary into `~/.local/share/assistant/bin`.
+4. **Local Models**: Downloads the quantized Whisper speech recognition model (`ggml-small.bin`) and your chosen offline Piper TTS voice models.
+5. **Knowledge & Roles**: Deploys system knowledge, user roles, and default `config.json` into `~/.config/assistant/` and `~/.local/share/assistant/`.
+6. **Executable Wrappers**: Generates executable wrappers (`assistant` and `assistant-gui`) inside `~/.local/bin`.
+
+---
+
+## 🚀 How to Launch and Use Assistant Once Installed
+
+Once the installation is complete, you can launch Assistant in several ways depending on your workflow.
+
+### 1. PATH Setup Verification
+Ensure `~/.local/bin` is present in your shell's `PATH`. If not already configured, add the following line to your `~/.bashrc`, `~/.zshrc`, or environment profile:
+
+```bash
+export PATH="$HOME/.local/bin:$PATH"
+```
+
+### 2. Launching from the Terminal
+
+Assistant provides two executable commands in `~/.local/bin`:
+
+| Command | Mode | Description |
+|---|---|---|
+| `assistant` | **Primary Launcher / Toggle** | Launches the interactive graphical interface. If Assistant is already running in the background or system tray, invoking `assistant` toggles window visibility (shows/hides the window). |
+| `assistant-gui` | **Direct GUI Launcher** | Launches the PyQt6 GUI directly without the wrapper trigger script. Supports passing an optional prompt: `assistant-gui "Explain quantum computing"`. |
+
+### 3. Voice Interaction Modes
+
+Assistant includes dynamic Voice Activity Detection (VAD) and push-to-talk modes:
+
+* **Automatic VAD Mode (`--voice`)**:
+  ```bash
+  assistant --voice
+  ```
+  Plays a start chime (`start.wav`), records your speech through the microphone, automatically stops recording when silence is detected, transcribes with Whisper (or fast remote ASR if configured in `config.json`), and brings up the Assistant window with the transcribed prompt already processing.
+
+* **Manual Push-to-Talk Toggle Mode (`--voice --toggle`)**:
+  ```bash
+  assistant --voice --toggle
+  ```
+  Ideal for noisy environments. Running the command once begins listening (notifying you with a desktop notification); running the exact same command a second time stops recording and submits the audio for processing.
+
+### 4. Multimodal Context Modes
+
+You can capture screen or clipboard content and attach it directly to your voice command:
+
+* **Clipboard Context (`--clipboard --voice`)**:
+  ```bash
+  assistant --clipboard --voice
+  ```
+  Reads text, image, or copied file path from the Wayland (`wl-paste`) or X11 (`xclip`) clipboard, attaches it as context, and records your spoken question.
+  *Also works with manual toggle*: `assistant --clipboard --toggle`.
+
+* **Active Screen Inspection (`--screen --voice`)**:
+  ```bash
+  assistant --screen --voice
+  ```
+  Captures a screenshot of your screen (via `grim` or `maim`), attaches it to the multimodal context, and records your voice query.
+  *Also works with manual toggle*: `assistant --screen --toggle`.
+
+### 5. System Tray & Background Operation
+
+Assistant is designed to live unobtrusively in your desktop environment's system tray:
+* **Minimize on Close**: Closing the Assistant window (`Ctrl+Q` or clicking the close button) does **not** exit the application; it minimizes it to the system tray so that shortcuts and voice modes respond instantaneously.
+* **Tray Interactions**:
+  * **Left Click**: Toggles / restores the main chat window.
+  * **Right Click**: Opens context menu:
+    * *Maximize*: Shows and focuses the conversation window.
+    * *Talk / Stop talking*: Toggles hands-free spoken conversation without showing the window.
+    * *Exit*: Terminates the application completely.
+* **Tray Status Indicator**: The robot icon (`󰚩`) changes color dynamically based on state:
+  * ⚪ Gray (`#828c99`): Idle / resting.
+  * 🟢 Green (`#7fd962`): Actively listening to microphone.
+  * 🟡 Amber (`#ffb454`): Routing intent via FastFlowLM `d3:edge`.
+  * 🔵 Cyan (`#59c2ff`): Model thinking or executing system tools.
+
+### 6. Window Manager & Shortcut Integration (Hyprland, i3, Sway, GNOME, KDE)
+
+To get the most out of Assistant, map keyboard shortcuts to the commands above. For Hyprland, see the configuration block below. For other window managers (Sway, i3, GNOME, KDE Custom Shortcuts), map your favorite key (e.g. `Super+A`) to `assistant` and `Super+Shift+A` to `assistant --voice`.
 
 ---
 
