@@ -404,7 +404,7 @@ This block configures Assistant's multi-model intelligence engine. It supports m
 ```
 
 * **`default`** *(String)*: The default model identifier from the `models` dictionary that Assistant starts with upon launching.
-* **`reasoning_effort`** *(String, Optional)*: Global default reasoning effort level for thinking-capable models (`"none"`, `"low"`, `"medium"`, `"high"`; defaults to `"medium"`).
+* **`reasoning_effort`** *(String, Optional)*: Global default reasoning effort level for thinking-capable models (`"none"`, `"low"`, `"medium"`, `"high"`; defaults to `"none"` to ensure maximum response speed unless explicitly enabled).
 * **`history_duration_minutes`** *(Integer/Float)*: Controls memory management. Drops historical message logs from the sliding context window if the file modification timestamp exceeds this duration.
 * **`system_context`** *(String)*: Absolute path pointing to a persistent system context profile markdown file.
 * **`models`** *(Object)*: Key-value map of available models. Each entry contains:

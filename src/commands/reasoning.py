@@ -53,7 +53,7 @@ class ReasoningCommand(BaseCommand):
         current_effort = (
             context.get_active_reasoning_effort()
             if hasattr(context, "get_active_reasoning_effort") and context.get_active_reasoning_effort
-            else "medium"
+            else "none"
         )
 
         if not target:

@@ -47,7 +47,7 @@ class CommandContext:
         self.set_active_role = set_active_role or (lambda r: False)
         self.get_mcp_status = get_mcp_status or (lambda: {})
         self.is_vision_supported = is_vision_supported or (lambda: True)
-        self.get_active_reasoning_effort = get_active_reasoning_effort or (lambda: "medium")
+        self.get_active_reasoning_effort = get_active_reasoning_effort or (lambda: "none")
         self.set_active_reasoning_effort = set_active_reasoning_effort or (lambda e: None)
         self.is_thinking_supported = is_thinking_supported or (lambda: False)
 
