@@ -131,29 +131,15 @@ DEFAULT_MODEL_KEY = model_catalog_manager.default_model_key
 props.set_active_model_key(DEFAULT_MODEL_KEY)
 
 mcp_manager = MCPManager(props.mcp_servers_config)
-mcp_tools = mcp_manager.discover_tools()
 
 # Load once at startup: recipe actions drive the manage_desktop tool schema and
 # _command_intents drives the silent/active classification of shell commands.
 HYPRLAND_RECIPES = load_hyprland_recipes()
 COMMAND_INTENTS = HYPRLAND_RECIPES.get("_command_intents", {})
 
-# Exclude MCP tools that are categorized as 'web_search' from the raw tools list exposed to the LLM.
-# They are accessed transparently via the canonical 'web_search' tool.
-raw_web_mcp_names = {
-    name for name, meta in mcp_manager.tools.items()
-    if meta.get("server_type") == "web_search"
-}
-# Also exclude searxng_web_search specifically if it came from an untyped server
-if "searxng_web_search" in mcp_manager.tools:
-    raw_web_mcp_names.add("searxng_web_search")
-
-exposed_mcp_tools = [
-    t for t in mcp_tools
-    if t.get("function", {}).get("name") not in raw_web_mcp_names
-]
-
 ## TOOLS & LOGIC
+# MCP tools are merged asynchronously once background discovery completes
+# (see _merge_discovered_mcp_tools below), keeping startup non-blocking.
 tools = (
     TIME_TOOLS
     + WEATHER_TOOLS
@@ -165,7 +151,6 @@ tools = (
     + OS_TOOLS
     + KNOWLEDGE_TOOLS
     + [build_manage_desktop_tool(HYPRLAND_RECIPES)]
-    + exposed_mcp_tools
 )
 
 # ==========================================
@@ -174,6 +159,39 @@ tools = (
 decision_router = DecisionRouter(props.decision_router_config)
 decision_router.register_mcp_servers(mcp_manager)
 DECISION_ENABLED = decision_router.enabled
+
+
+def _merge_discovered_mcp_tools(discovered_tools):
+    """Fold MCP tools discovered in the background into the runtime tool catalog.
+
+    Mutates the module-level `tools` list in place and refreshes the decision
+    router registration, so every consumer (which reads them at call time)
+    picks the tools up without stale references.
+    """
+    # Exclude MCP tools categorized as 'web_search' from the raw tools list
+    # exposed to the LLM: they are accessed transparently via the canonical
+    # 'web_search' tool.
+    raw_web_mcp_names = {
+        name for name, meta in mcp_manager.tools.items()
+        if meta.get("server_type") == "web_search"
+    }
+    # Also exclude searxng_web_search specifically if it came from an untyped server
+    if "searxng_web_search" in mcp_manager.tools:
+        raw_web_mcp_names.add("searxng_web_search")
+
+    for tool_spec in discovered_tools:
+        tool_name = tool_spec.get("function", {}).get("name")
+        if tool_name and tool_name not in raw_web_mcp_names:
+            tools.append(tool_spec)
+
+    # register_mcp_servers is idempotent: refresh the category/global mapping.
+    decision_router.register_mcp_servers(mcp_manager)
+    logger.info(f"[MCP] Background discovery merged {len(discovered_tools)} tools.")
+
+
+# Probe MCP servers off the UI thread: unreachable hosts can stall each probe
+# up to OS-level TCP timeouts, which must never delay application startup.
+mcp_manager.discover_tools_background(on_complete=_merge_discovered_mcp_tools)
 
 
 def resolve_tools_for_query(user_query, recent_context="", base_url=""):

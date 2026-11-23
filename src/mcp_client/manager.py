@@ -1,6 +1,7 @@
 """Model Context Protocol (MCP) client manager for Assistant."""
 
 import logging
+import threading
 from typing import Any, Dict, List, Optional, Tuple
 
 logger = logging.getLogger("assistant.mcp")
@@ -17,10 +18,18 @@ except ImportError:
 
 
 def run_sync(coro, timeout: float = 15.0) -> Any:
-    """Run an async coroutine synchronously using a dedicated thread pool."""
+    """Run an async coroutine synchronously with real timeout enforcement."""
+    async def _with_timeout() -> Any:
+        # Enforce the deadline inside the event loop so the underlying work
+        # (e.g. a hung TCP connect) is actually cancelled. A bare
+        # future.result(timeout=...) only abandons the wait and would leave a
+        # blocked worker thread behind, stalling ThreadPoolExecutor shutdown.
+        return await asyncio.wait_for(coro, timeout=timeout)
+
     with concurrent.futures.ThreadPoolExecutor(max_workers=1) as pool:
-        future = pool.submit(asyncio.run, coro)
-        return future.result(timeout=timeout)
+        future = pool.submit(asyncio.run, _with_timeout())
+        # Small grace margin over `timeout` to cover event loop startup/teardown.
+        return future.result(timeout=timeout + 5.0)
 
 
 class MCPManager:
@@ -191,6 +200,29 @@ class MCPManager:
             logger.info(f"[MCP] Active server '{server_name}' ({server_type}) registered with {len(tools_list)} tools.")
 
         return discovered
+
+    def discover_tools_background(self, on_complete=None) -> None:
+        """Run discover_tools() on a daemon thread so callers never block on it.
+
+        MCP probes can stall up to OS-level TCP timeouts when a configured host
+        is unreachable, so discovery must never run on the UI thread. The
+        optional `on_complete(discovered_tools)` callback is invoked on the
+        worker thread when discovery finishes (successfully or with an empty
+        list on failure).
+        """
+        def _worker() -> None:
+            try:
+                discovered = self.discover_tools()
+            except Exception as e:
+                logger.warning(f"[MCP] Background discovery failed: {e}")
+                discovered = []
+            if on_complete is not None:
+                try:
+                    on_complete(discovered)
+                except Exception as e:
+                    logger.warning(f"[MCP] Discovery callback failed: {e}")
+
+        threading.Thread(target=_worker, name="mcp-discovery", daemon=True).start()
 
     def get_web_search_tools(self) -> List[Dict[str, Any]]:
         """Return registered MCP tools configured as type 'web_search', ordered by priority (highest first)."""

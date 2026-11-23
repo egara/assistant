@@ -512,7 +512,7 @@ You can configure multiple MCP servers for the same service (e.g., a local Docke
 }
 ```
 
-* **Startup Probe & Redundancy Resolution**: Upon startup, Assistant tests connectivity to all configured MCP servers in parallel. For each group of servers sharing the same `type`, Assistant elects the responsive server with the **highest priority** as active. Other responsive instances in the same group remain in standby.
+* **Non-Blocking Startup Probe & Redundancy Resolution**: On launch, Assistant probes all configured MCP servers in parallel on a background thread, so unreachable hosts (which can stall up to OS-level TCP timeouts) never delay application startup. Discovered tools are merged into the tool catalog as soon as the probe completes. For each group of servers sharing the same `type`, Assistant elects the responsive server with the **highest priority** as active. Other responsive instances in the same group remain in standby. Probe timeouts are enforced inside the event loop (`asyncio.wait_for`), guaranteeing a hard ~2.5s deadline per server instead of waiting for OS-level TCP connection timeouts.
 * **Warm Disconnection Notice**: If the active MCP server goes down during the session, Assistant immediately informs the user that the server has become unavailable, prompting a restart to re-probe available candidates without hanging or getting stuck.
 * **`url`** *(String)*: The HTTP/SSE endpoint of the running MCP server.
 * **`transport`** *(String)*: The transport protocol (`"sse"` or `"streamable_http"`).
@@ -721,7 +721,7 @@ The codebase follows a modular design separating configuration and properties, e
 * **`src/llm/generator.py`**: Multi-round agentic loop worker (`AIGeneratorThread`, `extract_reasoning`), streaming tokens, DeepSeek/GLM reasoning capture, dynamic `reasoning_effort` passing with failure-tolerant error shielding, command approval safety checks, and loop prevention.
 * **`src/llm/catalog.py`**: Multi-model intelligence manager (`ModelCatalog`) managing presets, OpenAI client instantiation, runtime model catalog, endpoint discovery (`/models`), runtime capability probing (`/api/show`, `/api/tags`), and QML selector grouping.
 * **`src/tools/dispatch.py`**: Domain-wide tool dispatcher (`dispatch_tool`) mapping tool calls to implementations and evaluating silent desktop completion policies.
-* **`src/mcp_client/manager.py`**: Model Context Protocol client manager (`MCPManager`) coordinating SSE/HTTP transport connections, dynamic tool discovery, and remote tool execution.
+* **`src/mcp_client/manager.py`**: Model Context Protocol client manager (`MCPManager`) coordinating SSE/HTTP transport connections, non-blocking background tool discovery (event-loop enforced timeouts), and remote tool execution.
 * **`src/commands/`**: Command/Registry pattern implementing interactive slash commands (`/new`, `/reset`, `/clear`, `/help`, `/about`, `/voice`, `/tts`, `/model`, `/reasoning`, `/role`, `/mcp`) through decoupled modules (`session.py`, `system.py`, `voice.py`, `model.py`, `reasoning.py`, `role.py`, `mcp.py`).
 * **`src/routing/routing.py`**: Encapsulates `DecisionRouter` for FastFlowLM / d3:edge System One categorization, dynamic category-to-tools resolution, latency measurement, and fallback handling.
 * **`src/tools/time.py`**: Local time/date resolution with IANA timezone support (`get_current_time`).
