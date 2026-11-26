@@ -32,6 +32,37 @@ ApplicationWindow {
     readonly property string monoFont: "JetBrainsMono Nerd Font Mono"
     readonly property int systemFontSize: window.font.pixelSize > 0 ? window.font.pixelSize : (window.font.pointSize > 0 ? Math.round(window.font.pointSize * 1.33) : 14)
 
+    function wrapCodeBlocks(text) {
+        if (!text) return "";
+        var maxChars = 58;
+        return text.replace(/(```[^\n]*\n)([\s\S]*?)((?:```|$))/g, function(match, header, body, footer) {
+            var lines = body.split("\n");
+            var wrappedLines = [];
+            for (var i = 0; i < lines.length; i++) {
+                var line = lines[i];
+                if (line.length <= maxChars) {
+                    wrappedLines.push(line);
+                } else {
+                    while (line.length > maxChars) {
+                        var chunk = line.substring(0, maxChars);
+                        var spaceIdx = chunk.lastIndexOf(" ");
+                        if (spaceIdx > 35) {
+                            wrappedLines.push(line.substring(0, spaceIdx));
+                            line = line.substring(spaceIdx + 1);
+                        } else {
+                            wrappedLines.push(chunk);
+                            line = line.substring(maxChars);
+                        }
+                    }
+                    if (line.length > 0) {
+                        wrappedLines.push(line);
+                    }
+                }
+            }
+            return header + wrappedLines.join("\n") + footer;
+        });
+    }
+
     function getReasoningLabel(effort) {
         if (!isReasoningSupported) {
             return "󰟷 N/A";
@@ -274,7 +305,7 @@ ApplicationWindow {
 
                 Text {
                     id: textMetric
-                    text: role === "approval" ? "󰀦 **Action Required**\n\nThe AI wants to execute an unverified command:\n\n`" + msgText + "`" : msgText
+                    text: role === "approval" ? "󰀦 **Action Required**\n\nThe AI wants to execute an unverified command:\n\n`" + msgText + "`" : window.wrapCodeBlocks(msgText)
                     textFormat: Text.MarkdownText
                     font.family: window.monoFont
                     font.pixelSize: window.systemFontSize
