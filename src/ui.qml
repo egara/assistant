@@ -278,6 +278,8 @@ ApplicationWindow {
                     textFormat: Text.MarkdownText
                     font.family: window.monoFont
                     font.pixelSize: window.systemFontSize
+                    wrapMode: Text.Wrap
+                    width: contentCol.maxWidth
                     visible: false
                 }
 
